@@ -1,0 +1,59 @@
+{
+  "title": "Caddy (response metrics)",
+  "uid": "caddy-response",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate by server",
+      "description": "Caddy's `server` label is its internal listener name (srv0, srv1, ...), one per site block in the Caddyfile -- not the friendly service name. Cross-reference against certs/Caddyfile to know which listener maps to which upstream (dashy/openwebui/searxng/llm-server).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total[5m])) by (server)", "legendFormat": "{{server}}", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Response status codes",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total[5m])) by (code)", "legendFormat": "{{code}}", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Request duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le, server))", "legendFormat": "p50 {{server}}", "datasource": "Prometheus" },
+        { "expr": "histogram_quantile(0.95, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le, server))", "legendFormat": "p95 {{server}}", "datasource": "Prometheus" },
+        { "expr": "histogram_quantile(0.99, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le, server))", "legendFormat": "p99 {{server}}", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Requests in flight",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "caddy_http_requests_in_flight", "legendFormat": "{{server}}", "datasource": "Prometheus" }
+      ]
+    }
+  ]
+}

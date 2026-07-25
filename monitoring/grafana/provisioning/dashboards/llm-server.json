@@ -1,0 +1,101 @@
+{
+  "title": "LLM Server (llama.cpp)",
+  "uid": "llm-server",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Generation throughput (tok/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:predicted_tokens_seconds", "legendFormat": "predicted tok/s", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Prompt processing throughput (tok/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:prompt_tokens_seconds", "legendFormat": "prompt tok/s", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Requests processing / deferred",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:requests_processing", "legendFormat": "processing", "datasource": "Prometheus" },
+        { "expr": "llamacpp:requests_deferred", "legendFormat": "deferred", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Busy slots per decode call",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:n_busy_slots_per_decode", "legendFormat": "busy slots", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Total prompt tokens processed",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:prompt_tokens_total", "legendFormat": "prompt tokens", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Total tokens generated",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:tokens_predicted_total", "legendFormat": "generated tokens", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Total decode() calls",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 16 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:n_decode_total", "legendFormat": "decode calls", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Largest observed context (n_tokens_max)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 16 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:n_tokens_max", "legendFormat": "max n_tokens", "datasource": "Prometheus" }
+      ]
+    }
+  ]
+}

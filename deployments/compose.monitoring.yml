@@ -1,0 +1,101 @@
+services:
+  prometheus:
+    # Pinned from prom/prometheus:v2.55.1 -- see fmt/docker/dockerfile.md.
+    image: prom/prometheus@sha256:2659f4c2ebb718e7695cb9b25ffa7d6be64db013daba13e05c875451cf51b0d3
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-data:/prometheus
+    # node-exporter runs with network_mode: host (see below) and isn't
+    # reachable by container name -- reached via host-gateway instead, the
+    # same mechanism used before other services moved onto a shared network.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # No host port -- internal only, same "Caddy is the sole entry point"
+    # invariant as the main stack. Only Grafana needs to reach this.
+
+  node-exporter:
+    # Pinned from prom/node-exporter:v1.8.2 -- see fmt/docker/dockerfile.md.
+    image: prom/node-exporter@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
+    container_name: node-exporter
+    restart: unless-stopped
+    # Host network mode is the standard, documented way to run node-exporter
+    # -- without it, it reports the container's own network namespace
+    # instead of the host's. It only exposes a read-only /metrics endpoint,
+    # no service surface, so this is a low-risk, well-established exception
+    # to normal container networking.
+    network_mode: host
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($$|/)
+
+  cadvisor:
+    # Pinned from gcr.io/cadvisor/cadvisor:v0.49.1 -- see fmt/docker/dockerfile.md.
+    image: gcr.io/cadvisor/cadvisor@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
+    container_name: cadvisor
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    # Read-only docker.sock + host filesystem access -- needed to introspect
+    # per-container resource usage. A real, deliberate exception to this
+    # project's usual "no docker.sock" stance (see the Dashy portal, which
+    # explicitly avoided it) -- flagged here rather than added quietly.
+    # Everything is mounted read-only; cadvisor exposes only its own
+    # /metrics endpoint, no control surface into Docker itself.
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    privileged: false
+    # cAdvisor opens many fds watching cgroups across every container on the
+    # host -- crashed on startup with "inotify_init: too many open files"
+    # against Docker's default nofile ulimit (confirmed: plenty of headroom
+    # on the actual system-wide inotify limit, this is a per-container fd
+    # limit, not a host-level one).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  grafana:
+    # Pinned from grafana/grafana:11.3.1 -- see fmt/docker/dockerfile.md.
+    image: grafana/grafana@sha256:fa801ab6e1ae035135309580891e09f7eb94d1abdbd2106bdc288030b028158c
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    environment:
+      # Dashboards/datasources are provisioned from files (below), not
+      # hand-clicked -- matches fmt/observability/grafana.md's "dashboard as
+      # code" principle, adapted from ConfigMaps to bind-mounts.
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-data:/var/lib/grafana
+    # No host port -- reachable only via Caddy, same as every other service.
+
+  # Grafana needs a Caddy-fronted route too (see certs/Caddyfile's :3001
+  # block) -- adds the extra port to the caddy service already defined in
+  # compose.yml. Compose merges `ports:` across -f files (concatenates,
+  # doesn't replace), confirmed via `docker compose config` before relying
+  # on it here.
+  caddy:
+    ports:
+      - "3001:3001"
+
+networks:
+  local-llm-net:
+    external: true

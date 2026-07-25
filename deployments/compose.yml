@@ -1,0 +1,189 @@
+services:
+  llm-server:
+    # Pinned from ghcr.io/ggml-org/llama.cpp:server-cuda (2026-07-23) -- see
+    # fmt/docker/dockerfile.md, never `latest`/a moving tag in production.
+    # Bump deliberately: re-pull the tag, re-pin the new digest, note it here.
+    image: ghcr.io/ggml-org/llama.cpp@sha256:1b3d1458ccda7287feab41b8001311acc03e24cde99ec0a2908fe83830562f38
+    container_name: llm-server
+    restart: unless-stopped
+    # Cgroup-level CPU restriction -- set LLM_CPUSET in .env (e.g. "8-19" for
+    # a specific core range) if you want to pin inference to particular
+    # cores. Empty (default) = unrestricted, uses all cores. Confirmed more
+    # reliable than llama.cpp's own thread-affinity flags (which don't
+    # actually restrict the OS affinity mask on at least one tested setup)
+    # and than external `taskset -pc` after the fact (needs host root
+    # against a root-owned container process, races new worker threads
+    # spawning after the readiness check). Cgroups apply to the whole
+    # container atomically and cover threads spawned at any point. See
+    # README.md "Tuning" for how/when this matters.
+    cpuset: "${LLM_CPUSET:-}"
+    networks:
+      - local-llm-net
+    environment:
+      - GGML_CUDA_GRAPH_OPT=1
+    volumes:
+      - ./models:/models
+    # No host ports -- reachable only via Caddy (see deployments/compose.yml
+    # caddy service + certs/Caddyfile), which terminates TLS and is the only
+    # thing bound to any host-facing port. Not a convenience choice: with no
+    # `ports:` entry, this container has no host-level socket at all, so
+    # there is nothing to connect to except through Caddy, from the host or
+    # off it.
+    # Healthcheck (curl -f localhost:8080/health) is baked into the image --
+    # inherited automatically, drives the depends_on ordering below.
+    command:
+      - -m
+      - /models/${MODEL_FILE:?Set MODEL_FILE in .env -- see .env.example}
+      - -ngl
+      - "${NGL:-99}"
+      # MoE-only flag (forces N expert layers to CPU/RAM instead of GPU) --
+      # a no-op for dense models. Default 0 = fully GPU; raise it if your
+      # model+context doesn't fit in VRAM. See README.md "Swapping the model".
+      - --n-cpu-moe
+      - "${N_CPU_MOE:-0}"
+      - -c
+      - "${CONTEXT_SIZE:-8192}"
+      - --parallel
+      - "1"
+      - -b
+      - "4096"
+      - -ub
+      - "2048"
+      - -t
+      - "${THREADS:-4}"
+      - --no-mmap
+      - --flash-attn
+      - "on"
+      - --cache-type-k
+      - q8_0
+      - --cache-type-v
+      - q8_0
+      # Required for real tool-calling: renders the model's actual chat
+      # template (via minja) and engages llama.cpp's matching tool-call
+      # parser. Without this, Qwen3's <tool_call><function=...> text (its
+      # native format, straight from the GGUF's own chat template) streams
+      # through as literal assistant message content instead of being
+      # parsed into a structured tool_calls response OpenWebUI can execute.
+      - --jinja
+      - --metrics
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  searxng:
+    # Pinned from searxng/searxng:latest (2026-07-23) -- see fmt/docker/dockerfile.md.
+    image: searxng/searxng@sha256:854f239d5c181db9c4282cd0ffc1737a61232dd6ad0ea964028b96df17d7758a
+    container_name: searxng
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    volumes:
+      - ./searxng:/etc/searxng
+    # No host ports -- see the note on llm-server above. Reachable only
+    # through Caddy now, same as every other service.
+    # /healthz is a real lightweight liveness endpoint -- returns instantly,
+    # no engine dispatch. The original ?q=healthcheck&format=json probe was
+    # a genuine search query, fired every 15s for as long as the container
+    # ran, and got the outbound IP rate-limited by real engines (Google CSE,
+    # Brave) -- confirmed via searxng's own logs (2026-07-23).
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  openwebui:
+    # Pinned from ghcr.io/open-webui/open-webui:main (2026-07-23) -- `main`
+    # was a moving branch tag, worse than `latest`. See fmt/docker/dockerfile.md.
+    image: ghcr.io/open-webui/open-webui@sha256:a26effeb220e132482bf7e0560b3404843e7bc40d23051144e062960df8df6b0
+    container_name: openwebui
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    depends_on:
+      llm-server:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    environment:
+      - ENABLE_SIGNUP=False
+      # llm-server is now on the same docker network (local-llm-net) instead
+      # of being reached via host-gateway -- simpler and one less thing that
+      # breaks if the host-published port ever changes, now that llm-server
+      # doesn't publish one at all.
+      - OPENAI_API_BASE_URL=http://llm-server:8080/v1
+      - OPENAI_API_KEY=sk-local
+      - ENABLE_WEB_SEARCH=True
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
+      - WEB_SEARCH_RESULT_COUNT=3
+      - WEB_SEARCH_CONCURRENT_REQUESTS=5
+    volumes:
+      - ./openwebui-data:/app/backend/data
+    # No host ports -- see the note on llm-server above.
+
+  dashy:
+    # Pinned from lissy93/dashy:latest (2026-07-23) -- see fmt/docker/dockerfile.md.
+    image: lissy93/dashy@sha256:6f9ce4b2b98352376df24de34796cc423f21d216405486e461452dd76becfe2a
+    container_name: dashy
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    # config-validator.js reads from user-data/conf.yml (path controlled by
+    # USER_DATA_DIR, default 'user-data') -- NOT public/ or dist/. Those two
+    # are just static demo copies baked into the image; mounting over them
+    # (an earlier mistake here) has no effect on what the app actually uses.
+    volumes:
+      - ./portal/conf.yml:/app/user-data/conf.yml
+      # Static page (real copyable text/table, not icon tiles) for API
+      # connection info -- served from public/, which express.static still
+      # serves for any path not present in user-data/ or dist/.
+      - ./portal/api.html:/app/public/api.html
+      # Downloadable root CA (public cert only, never the key) so people
+      # can get it without filesystem access -- see docs/api.html's TLS note.
+      - ./certs/ca.crt:/app/public/ca.crt:ro
+    # No host ports -- see the note on llm-server above.
+
+  caddy:
+    # Pinned from caddy:2.9.1-alpine (2026-07-23) -- see fmt/docker/dockerfile.md.
+    image: caddy@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+    container_name: caddy
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    depends_on:
+      llm-server:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+      openwebui:
+        condition: service_healthy
+      dashy:
+        condition: service_started
+    # Filenames are fixed regardless of your domain -- generate-local-ca.sh
+    # always writes server.crt/server.key; only the Caddyfile's site
+    # addresses (and the cert's SAN) encode your actual domain.
+    volumes:
+      - ./certs/Caddyfile:/etc/caddy/Caddyfile
+      - ./certs/server.crt:/certs/server.crt:ro
+      - ./certs/server.key:/certs/server.key:ro
+    # The sole entry point for all 4 services -- TLS-terminated versions of
+    # the same ports they used to publish directly. See certs/Caddyfile.
+    ports:
+      - "443:443"
+      - "3000:3000"
+      - "8081:8081"
+      - "8080:8080"
+
+networks:
+  local-llm-net:
+    external: true

@@ -1,0 +1,36 @@
+{
+	# Admin API (which serves /metrics) binds to 127.0.0.1 by default --
+	# unreachable from other containers (like Prometheus) even on the same
+	# docker network.
+	admin 0.0.0.0:2019
+	auto_https off
+	servers {
+		metrics
+	}
+}
+
+DOMAIN_PLACEHOLDER:443 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy dashy:8080
+}
+
+DOMAIN_PLACEHOLDER:3000 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy openwebui:8080
+}
+
+DOMAIN_PLACEHOLDER:8081 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy searxng:8080
+}
+
+DOMAIN_PLACEHOLDER:8080 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy llm-server:8080
+}
+
+# Optional: only needed if using deployments/compose.monitoring.yml
+DOMAIN_PLACEHOLDER:3001 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy grafana:3000
+}

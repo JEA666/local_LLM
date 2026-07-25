@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # llama.cpp's own metrics -- already enabled via --metrics in compose.yml,
+  # no extra work needed on the LLM side. Real data confirmed live: token
+  # throughput, requests processing/deferred, decode call counts.
+  - job_name: llm-server
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["llm-server:8080"]
+
+  # Caddy's built-in Prometheus metrics -- request count/duration/status per
+  # reverse-proxied route. Covers dashy/openwebui/searxng "response metrics"
+  # for free -- neither has a native /metrics endpoint of its own (checked:
+  # searxng 404s, openwebui's /metrics 200 is just its SPA HTML shell, not
+  # real data). Needs `servers { metrics }` enabled in the Caddyfile.
+  - job_name: caddy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["caddy:2019"]
+
+  # node-exporter runs with network_mode: host (needed for accurate host-level
+  # network stats -- otherwise it reports the container's own network
+  # namespace, not the host's), so it isn't reachable by container name on
+  # local-llm-net. Reached via host-gateway instead, same mechanism used
+  # elsewhere in this project before services were moved onto a shared
+  # network -- this one genuinely needs it, not just historical leftover.
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]

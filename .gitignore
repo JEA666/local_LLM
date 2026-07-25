@@ -1,0 +1,19 @@
+models/
+*.gguf
+openwebui-data/
+prometheus-data/
+grafana-data/
+.env
+
+# Real generated CA/cert/Caddyfile/portal/searxng config -- see
+# scripts/generate-local-ca.sh and the .example templates these are
+# generated from. Never commit real key material or your own domain.
+certs/*.key
+certs/*.crt
+certs/*.srl
+certs/*.csr
+certs/san.cnf
+certs/Caddyfile
+portal/conf.yml
+portal/api.html
+searxng/settings.yml

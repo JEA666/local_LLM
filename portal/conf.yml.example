@@ -1,0 +1,40 @@
+pageInfo:
+  title: local-llm
+  description: Local LLM portal
+
+appConfig:
+  theme: colorful
+  layout: auto
+  iconSize: medium
+  # No auth by default: this assumes the portal stays LAN-only. If it's
+  # reachable beyond your own network, add real auth -- see Dashy's own
+  # docs (https://dashy.to/docs/authentication/). Its built-in auth is
+  # client-side only, not a real security boundary on its own.
+
+sections:
+  - name: AI Assistant
+    icon: fas fa-robot
+    items:
+      - title: OpenWebUI
+        description: Chat with the model
+        url: https://DOMAIN_PLACEHOLDER:3000
+        icon: fas fa-comments
+
+  - name: Search
+    icon: fas fa-magnifying-glass
+    items:
+      - title: Anonymous Search
+        description: SearXNG -- no login, no tracking
+        url: https://DOMAIN_PLACEHOLDER:8081
+        icon: fas fa-user-secret
+
+  - name: API
+    icon: fas fa-code
+    items:
+      # A real page with selectable/copyable text (endpoint, model, curl,
+      # client config), not icon tiles -- Dashy's tile format doesn't fit
+      # reference info well. See portal/api.html.
+      - title: API Docs
+        description: Endpoint, model name, curl example, client setup
+        url: https://DOMAIN_PLACEHOLDER/api.html
+        icon: fas fa-plug

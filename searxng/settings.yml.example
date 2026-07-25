@@ -1,0 +1,21 @@
+# Read the documentation before extending the defaults:
+# https://docs.searxng.org/admin/settings/
+#
+# Copy this to settings.yml and replace secret_key with your own before
+# first run: openssl rand -hex 32
+# (searxng also auto-generates a settings.yml with its own random key on
+# first start if none is mounted -- either way, don't reuse this example
+# key, it's not a secret once it's in a public repo.)
+
+use_default_settings: true
+
+server:
+  secret_key: "REPLACE_ME_WITH_YOUR_OWN_openssl_rand_hex_32"
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    # Needed for OpenWebUI's web-search integration -- SearXNG disables the
+    # JSON API by default.
+    - json
