@@ -17,7 +17,7 @@ Follows the layout convention in `fmt/go/project_layout.md` (a platform-engineer
 | Directory | Contents |
 |---|---|
 | `deployments/` | `compose.yml` — the whole stack, parameterized via `.env` |
-| `scripts/` | Every entrypoint and utility script (`stack-up.sh`, `docker-run.sh`, `generate-local-ca.sh`, `benchmark.sh`, ...) |
+| `scripts/` | Every entrypoint and utility script (`stack-up.sh`, `docker-run.sh`, `generate-local-ca.sh`, `benchmark.sh`, `detect-hardware.sh`, ...) |
 | `docs/` | `api.md` — API reference |
 | `portal/`, `searxng/`, `certs/`, `models/`, `openwebui-data/`, `benchmarks/` | Live per-service config/data. `.example` templates are tracked; the real generated files are git-ignored (see "Quickstart") |
 

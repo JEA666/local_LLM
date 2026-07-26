@@ -6,17 +6,9 @@ The goal by the end: a working `.env` with `MODEL_FILE` pointing at a real `.ggu
 
 ## Step 1 — detect the hardware
 
-Run these and read the actual output before doing anything else:
+Run `./scripts/detect-hardware.sh` and read its actual output before doing anything else — don't re-derive the detection commands yourself; the script exists precisely so this step is a fixed, tested check instead of something reinvented slightly differently on every run.
 
-```bash
-nvidia-smi --query-gpu=name,memory.total,memory.free,driver_version --format=csv
-nproc --all
-free -h
-lscpu | grep -E "Model name|Socket|Core|Thread"
-docker info --format '{{.Runtimes}}'   # confirm nvidia-container-toolkit is registered
-```
-
-Note down: GPU model + total VRAM, CPU core count (and whether it's a hybrid P-core/E-core chip — Intel 12th-gen+ desktop parts, most laptop chips; check the CPU model name against Intel/AMD's own spec pages if unsure), and total RAM. If `nvidia-smi` fails or there's no NVIDIA GPU, stop and tell the user plainly — this stack requires one (see README "Requirements"); it does not support CPU-only or non-NVIDIA GPU inference.
+Note down: GPU model + total VRAM, CPU core count (and whether it's a hybrid P-core/E-core chip — Intel 12th-gen+ desktop parts, most laptop chips; check the CPU model name against Intel/AMD's own spec pages if unsure), and total RAM. If the script reports no NVIDIA GPU or `nvidia-container-toolkit` isn't registered, stop and tell the user plainly — this stack requires an NVIDIA GPU (see README "Requirements"); it does not support CPU-only or non-NVIDIA GPU inference.
 
 ## Step 2 — decide: dense or MoE
 
@@ -26,9 +18,11 @@ This is the real fork in the road, and it hinges on VRAM headroom, not personal 
 
 **If VRAM is tight relative to the model quality you want** — pick a **Mixture-of-Experts (MoE)** model instead, and lean on `N_CPU_MOE` to offload expert layers to system RAM. This is the whole reason `N_CPU_MOE` exists (see README "Swapping the model"): a MoE model only activates a handful of its experts per token (e.g. 8 of 128), so most of its weights sit idle on any given forward pass — offloading those idle experts to CPU/RAM costs far less than it would for a dense model, where *every* weight gets touched every token regardless.
 
-This isn't theoretical — it's this project's own founding lesson (see `fmt/overlays/heggli/homelab/local-LLM/README.md`'s decisions table): a dense 32B model maxed out at 2.23 tok/s on one real test machine — unusable — while a same-scale MoE model (30B total, ~3B active) hit 27+ tok/s on the *same hardware*, because only a small fraction of it needed to be touched per token. Don't dismiss MoE as "worse" just because fewer parameters are active — for constrained VRAM it's usually the better trade, not a compromise.
+This isn't theoretical — it's this project's own founding lesson, one real measured case (not a universal default; see `heggli/hardware/ultron/ultron.md` for the full data, `fmt/overlays/heggli/homelab/local-LLM/README.md`'s decisions table for the summary): on an RTX 3080 10GB, a dense 32B model maxed out at ~2 tok/s — unusable — while a same-scale MoE model (30B total, ~3B active, `N_CPU_MOE=36`) hit 27-51 tok/s on the *identical hardware*, depending on CPU governor/thread-placement tuning. Same GPU, same VRAM budget — the dense-vs-MoE architecture choice alone was the difference between usable and not. Don't dismiss MoE as "worse" just because fewer parameters are active — for constrained VRAM it's usually the better trade, not a compromise.
 
 **If VRAM is very limited (under ~8GB) or absent** — temper expectations. A small dense model (3-8B, Q4) fully on GPU, or a heavily CPU-offloaded MoE model, both work but won't be fast. Say so plainly rather than overselling it.
+
+**VRAM capacity isn't the whole story — memory bandwidth is what actually limits token generation.** A GPU with more VRAM but less bandwidth can be *worse* for TG than one with less VRAM but more bandwidth. Real illustration from `heggli/hardware/ultron/ultron.md`'s GPU comparison: a 16GB card at ~288 GB/s bandwidth is measurably *slower* for token generation than a 10GB card at 760 GB/s, despite the extra VRAM — "more VRAM, less bandwidth" is one of the most common bad trade-offs people make choosing a GPU for local inference. If you're advising on a GPU upgrade rather than just what fits the one already installed, look up the card's real memory bandwidth (GB/s), not just its VRAM size.
 
 ## Step 3 — pick an actual model file
 
@@ -48,7 +42,7 @@ Then set, based on what you found:
 - **`NGL=99`** — almost always correct as-is (llama.cpp clamps to the model's real layer count)
 - **`N_CPU_MOE`** — `0` for dense models (no-op) or if the MoE model fully fits on GPU anyway. For a MoE model that needs CPU offload: rule of thumb from README "Swapping the model" — expert tensors are typically ~90%+ of a MoE model's file size, so (file size in GB) ÷ (total expert layers, check the model card) ≈ GB per layer; pick a value that leaves ~1-2GB VRAM headroom above what fits
 - **`CONTEXT_SIZE`** — bigger costs more VRAM regardless of how much context a given request actually uses; don't set it far beyond what the user will realistically need
-- **`THREADS`** — matters most for the CPU-offloaded portion of a hybrid setup; on a hybrid P-core/E-core CPU, don't assume more threads or "the fast cores" is automatically better without the user actually measuring (`scripts/benchmark.sh` if present) — see README "Tuning"
+- **`THREADS`** — matters most for the CPU-offloaded portion of a hybrid setup; on a hybrid P-core/E-core CPU, don't assume more threads or "the fast cores" is automatically better without the user actually measuring (`scripts/benchmark.sh`) — see README "Tuning"
 - **`LLM_CPUSET`** — leave empty unless you have a specific, measured reason to pin cores (see the same "Tuning" section — it's a real lever but not a default-on one)
 - **`DOMAIN`** — `localhost` is fine to start; see README "Custom domain + HTTPS" if they want real TLS on their LAN
 
