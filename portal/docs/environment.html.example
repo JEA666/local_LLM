@@ -109,20 +109,6 @@
     position: relative;
   }
 
-  .danger-tag {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--zone-danger);
-    background: var(--zone-danger-soft);
-    border: 1px solid var(--zone-danger);
-    border-radius: 3px;
-    padding: 0.08rem 0.45rem;
-    margin-bottom: 0.4rem;
-  }
-
   .caddy-node .name {
     font-size: 1.1rem;
     color: var(--zone-danger);
@@ -240,6 +226,7 @@
     width: 1px;
     height: 1.4rem;
     background: var(--line-strong);
+    align-self: center;
   }
 
   .back-card {
@@ -475,6 +462,7 @@
     <a href="index.html">Home</a>
     <a href="api.html">API</a>
     <a href="environment.html" class="active">Environment</a>
+    <a href="hardware.html">Hardware</a>
     <div class="divider"></div>
     <a href="https://github.com/JEA666/local_LLM.git" class="external" target="_blank" rel="noopener">GitHub Repo</a>
   </nav>
@@ -502,7 +490,6 @@
 
     <div class="node-row">
       <div class="node caddy-node">
-        <span class="danger-tag">danger zone</span>
         <div class="name">Caddy</div>
         <div class="detail">TLS termination</div>
         <div class="ports">:443 · :3000</div>

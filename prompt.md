@@ -6,9 +6,9 @@ The goal by the end: a working `.env` with `MODEL_FILE` pointing at a real `.ggu
 
 ## Step 1 — detect the hardware
 
-Run `./scripts/detect-hardware.sh` and read its actual output before doing anything else — don't re-derive the detection commands yourself; the script exists precisely so this step is a fixed, tested check instead of something reinvented slightly differently on every run.
+Run `./scripts/detect-hardware.sh` and read its actual output before doing anything else — don't re-derive the detection commands yourself; the script exists precisely so this step is a fixed, tested check instead of something reinvented slightly differently on every run. It also regenerates `portal/docs/hardware.html` (viewable at `https://<your-domain>/docs/hardware.html` once the stack is up) with the same numbers, so re-run it after any hardware change.
 
-Note down: GPU model + total VRAM, CPU core count (and whether it's a hybrid P-core/E-core chip — Intel 12th-gen+ desktop parts, most laptop chips; check the CPU model name against Intel/AMD's own spec pages if unsure), and total RAM. If the script reports no NVIDIA GPU or `nvidia-container-toolkit` isn't registered, stop and tell the user plainly — this stack requires an NVIDIA GPU (see README "Requirements"); it does not support CPU-only or non-NVIDIA GPU inference.
+Note down: GPU model + total VRAM, CPU core count and topology (the script reports P-core/E-core split directly via sysfs when the chip is hybrid — Intel 12th-gen+ desktop parts, most laptop chips — no need to cross-check spec pages), and total RAM. If the script reports no NVIDIA GPU or `nvidia-container-toolkit` isn't registered, stop and tell the user plainly — this stack requires an NVIDIA GPU (see README "Requirements"); it does not support CPU-only or non-NVIDIA GPU inference.
 
 ## Step 2 — decide: dense or MoE
 
@@ -22,7 +22,7 @@ This isn't theoretical — it's this project's own founding lesson, one real mea
 
 **If VRAM is very limited (under ~8GB) or absent** — temper expectations. A small dense model (3-8B, Q4) fully on GPU, or a heavily CPU-offloaded MoE model, both work but won't be fast. Say so plainly rather than overselling it.
 
-**VRAM capacity isn't the whole story — memory bandwidth is what actually limits token generation.** A GPU with more VRAM but less bandwidth can be *worse* for TG than one with less VRAM but more bandwidth. Real illustration from `heggli/hardware/ultron/ultron.md`'s GPU comparison: a 16GB card at ~288 GB/s bandwidth is measurably *slower* for token generation than a 10GB card at 760 GB/s, despite the extra VRAM — "more VRAM, less bandwidth" is one of the most common bad trade-offs people make choosing a GPU for local inference. If you're advising on a GPU upgrade rather than just what fits the one already installed, look up the card's real memory bandwidth (GB/s), not just its VRAM size.
+**VRAM capacity isn't the whole story — memory bandwidth is what actually limits token generation.** A GPU with more VRAM but less bandwidth can be *worse* for TG than one with less VRAM but more bandwidth. Real illustration from `heggli/hardware/ultron/ultron.md`'s GPU comparison: a 16GB card at ~288 GB/s bandwidth is measurably *slower* for token generation than a 10GB card at 760 GB/s, despite the extra VRAM — "more VRAM, less bandwidth" is one of the most common bad trade-offs people make choosing a GPU for local inference. `detect-hardware.sh` can't get this from `nvidia-smi` (there's no runtime-queryable field for it) — you already know it, or can estimate it closely, from the GPU name the script reports. Match it against your own knowledge of that card's spec sheet rather than treating bandwidth as unknown just because the script didn't report it; only fall back to asking the user to check if you're genuinely unsure (an unfamiliar or very new card).
 
 ## Step 3 — pick an actual model file
 

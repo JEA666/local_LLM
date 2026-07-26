@@ -62,9 +62,10 @@ sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$SCRIPT_DIR/../portal/conf.yml.example" \
 
 echo "=== Generating portal/docs/ for $DOMAIN ==="
 echo "  (model name left as MODEL_NAME_PLACEHOLDER in api.html -- edit by hand"
-echo "  to match your MODEL_FILE, this script only knows the domain)"
+echo "  to match your MODEL_FILE, this script only knows the domain. hardware.html"
+echo "  has no real values yet either -- run scripts/detect-hardware.sh for those.)"
 DOCS_DIR="$SCRIPT_DIR/../portal/docs"
-for page in index api environment; do
+for page in index api environment hardware; do
   sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$DOCS_DIR/$page.html.example" > "$DOCS_DIR/$page.html"
 done
 

@@ -15,6 +15,7 @@
     <a href="index.html">Home</a>
     <a href="api.html" class="active">API</a>
     <a href="environment.html">Environment</a>
+    <a href="hardware.html">Hardware</a>
     <div class="divider"></div>
     <a href="https://github.com/JEA666/local_LLM.git" class="external" target="_blank" rel="noopener">GitHub Repo</a>
   </nav>

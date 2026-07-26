@@ -19,6 +19,7 @@ portal/conf.yml
 portal/docs/index.html
 portal/docs/api.html
 portal/docs/environment.html
+portal/docs/hardware.html
 searxng/settings.yml
 
 # Claude Code's own working files -- never committed, not project content.

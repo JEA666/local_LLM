@@ -15,6 +15,7 @@
     <a href="index.html" class="active">Home</a>
     <a href="api.html">API</a>
     <a href="environment.html">Environment</a>
+    <a href="hardware.html">Hardware</a>
     <div class="divider"></div>
     <a href="https://github.com/JEA666/local_LLM.git" class="external" target="_blank" rel="noopener">GitHub Repo</a>
   </nav>
@@ -32,6 +33,10 @@
     <a href="environment.html">
       <div class="card-title">Environment</div>
       <div class="card-desc">Architecture diagram — Caddy routing, the LLM stack, the optional Obs stack</div>
+    </a>
+    <a href="hardware.html">
+      <div class="card-title">Hardware</div>
+      <div class="card-desc">GPU/CPU/RAM this deployment is actually running on</div>
     </a>
   </div>
 
