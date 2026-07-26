@@ -37,6 +37,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ITERATIONS="${1:-3}"
 OUTPUT_FILE="${2:-$SCRIPT_DIR/../benchmarks/benchmark_results.json}"
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 CONTEXT_DEPTH="${3:-0}"
 SERVER_URL="http://localhost:8080"
 MODEL_NAME="${MODEL_NAME:-local-model}"

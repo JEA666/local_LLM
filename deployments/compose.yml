@@ -23,12 +23,15 @@ services:
       - GGML_CUDA_GRAPH_OPT=1
     volumes:
       - ./models:/models
-    # No host ports -- reachable only via Caddy (see deployments/compose.yml
-    # caddy service + certs/Caddyfile), which terminates TLS and is the only
-    # thing bound to any host-facing port. Not a convenience choice: with no
-    # `ports:` entry, this container has no host-level socket at all, so
-    # there is nothing to connect to except through Caddy, from the host or
-    # off it.
+    # Not reachable from the LAN or off-host -- only Caddy (see the caddy
+    # service + certs/Caddyfile) is bound to a host-facing port for that.
+    # The one exception: a loopback-only port for scripts/benchmark.sh, which
+    # measures raw server performance and needs a direct, TLS-free connection
+    # so proxy overhead doesn't skew the numbers. 127.0.0.1 binding means it's
+    # unreachable from any other device regardless -- doesn't reopen the LAN
+    # exposure the "Caddy is the sole entry point" design is actually about.
+    ports:
+      - "127.0.0.1:8080:8080"
     # Healthcheck (curl -f localhost:8080/health) is baked into the image --
     # inherited automatically, drives the depends_on ordering below.
     command:
@@ -121,6 +124,9 @@ services:
       # breaks if the host-published port ever changes, now that llm-server
       # doesn't publish one at all.
       - OPENAI_API_BASE_URL=http://llm-server:8080/v1
+      # Not a real secret -- llama.cpp's server doesn't validate this value at
+      # all, it's only set because OpenWebUI's OpenAI-compatible client
+      # requires some non-empty API key to be configured.
       - OPENAI_API_KEY=sk-local
       - ENABLE_WEB_SEARCH=True
       - WEB_SEARCH_ENGINE=searxng
@@ -151,7 +157,7 @@ services:
       # environment/docs.css, not just one page.
       - ./portal/docs:/app/public/docs:ro
       # Downloadable root CA (public cert only, never the key) so people
-      # can get it without filesystem access -- see docs/api.html's TLS note.
+      # can get it without filesystem access -- see portal/docs/api.html's TLS note.
       - ./certs/ca.crt:/app/public/ca.crt:ro
     # No host ports -- see the note on llm-server above.
 

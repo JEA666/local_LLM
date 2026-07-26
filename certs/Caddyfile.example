@@ -33,7 +33,7 @@ DOMAIN_PLACEHOLDER:443 {
 		reverse_proxy llm-server:8080
 	}
 
-	# Catch-all: Dashy, the portal. Also serves portal/api.html and
+	# Catch-all: Dashy, the portal. Also serves portal/docs/*.html and
 	# certs/ca.crt as static files from its own public dir (bind-mounted in
 	# compose.yml) -- unaffected by the routes above.
 	handle {

@@ -60,13 +60,22 @@ echo "=== Generating portal/conf.yml for $DOMAIN ==="
 sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$SCRIPT_DIR/../portal/conf.yml.example" \
   > "$SCRIPT_DIR/../portal/conf.yml"
 
-echo "=== Generating portal/api.html for $DOMAIN ==="
-echo "  (model name left as MODEL_NAME_PLACEHOLDER -- edit portal/api.html by"
-echo "  hand to match your MODEL_FILE, this script only knows the domain)"
-sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$SCRIPT_DIR/../portal/api.html.example" \
-  > "$SCRIPT_DIR/../portal/api.html"
+echo "=== Generating portal/docs/ for $DOMAIN ==="
+echo "  (model name left as MODEL_NAME_PLACEHOLDER in api.html -- edit by hand"
+echo "  to match your MODEL_FILE, this script only knows the domain)"
+DOCS_DIR="$SCRIPT_DIR/../portal/docs"
+for page in index api environment; do
+  sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" "$DOCS_DIR/$page.html.example" > "$DOCS_DIR/$page.html"
+done
+
+echo "=== Generating searxng/settings.yml for $DOMAIN ==="
+SEARXNG_SECRET="$(openssl rand -hex 32)"
+sed -e "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" \
+    -e "s/REPLACE_ME_WITH_YOUR_OWN_openssl_rand_hex_32/$SEARXNG_SECRET/g" \
+  "$SCRIPT_DIR/../searxng/settings.yml.example" \
+  > "$SCRIPT_DIR/../searxng/settings.yml"
 
 echo ""
 echo "Done."
 echo "  CA to trust on client devices: $CERTS_DIR/ca.crt"
-echo "  (also served at https://$DOMAIN/ca.crt once the stack is up -- see docs/api.md)"
+echo "  (also served at https://$DOMAIN/ca.crt once the stack is up -- see portal/docs/api.html)"

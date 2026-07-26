@@ -564,7 +564,7 @@
             </div>
             <div class="back-card">
               <div class="name">node-exporter</div>
-              <div class="port">:9100</div>
+              <div class="port">host:9100</div>
             </div>
             <div class="back-card">
               <div class="name">cadvisor</div>
@@ -583,9 +583,9 @@
       <div class="item"><span class="swatch caddy"></span> Caddy (exposed)</div>
       <div class="item"><span class="swatch svc"></span> LLM stack</div>
       <div class="item"><span class="swatch mon"></span> Obs stack (optional)</div>
-      <div class="item"><span class="swatch back"></span> Back end (internal only)</div>
+      <div class="item"><span class="swatch back"></span> Back end</div>
     </div>
-    <p class="diagram-note">Path-routed under Caddy's single <code>:443</code>, except OpenWebUI (own port -- no subpath support in its SvelteKit build).</p>
+    <p class="diagram-note">Path-routed under Caddy's single <code>:443</code>, except OpenWebUI (own port -- no subpath support in its SvelteKit build). Back end services never go through Caddy either way -- prometheus/cadvisor/gpu-exporter are internal-only (no published port), but node-exporter runs on the host's own network (<code>network_mode: host</code>) for accurate host-level stats, so it's reachable directly on the host, not internal-only like the other three.</p>
   </div>
 
   <p class="section-label">Internal, independent of Caddy</p>

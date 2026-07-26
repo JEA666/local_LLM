@@ -21,7 +21,7 @@ Follows the layout convention in `fmt/go/project_layout.md` (a platform-engineer
 | `docs/` | `api.md` — API reference |
 | `portal/`, `searxng/`, `certs/`, `models/`, `openwebui-data/`, `benchmarks/` | Live per-service config/data. `.example` templates are tracked; the real generated files are git-ignored (see "Quickstart") |
 
-**Gotcha — editing single-file bind mounts**: `compose.yml` bind-mounts individual files (`portal/conf.yml`, `certs/Caddyfile`, cert files) and one directory (`portal/docs/`). Docker binds these to a specific inode, not the path. An editor that writes atomically (write a temp file, then rename over the original — the safe-write pattern most editors use) replaces the inode, silently breaking the mount: the container keeps serving the old, now-unlinked file. Fix is always the same — restart the container after editing (`docker restart <service>`), don't assume a live bind mount means live-reloading.
+**Gotcha — editing single-file bind mounts**: `compose.yml` bind-mounts individual files (`portal/conf.yml`, `certs/Caddyfile`, cert files) to a specific inode, not the path. An editor that writes atomically (write a temp file, then rename over the original — the safe-write pattern most editors use) replaces the inode, silently breaking the mount: the container keeps serving the old, now-unlinked file. Fix is always the same — restart the container after editing (`docker restart <service>`), don't assume a live bind mount means live-reloading. `portal/docs/` is mounted as a whole *directory* instead, which resolves file lookups live against the host — this specific failure mode doesn't apply there, though restarting after an edit is still the safe default if you're ever unsure.
 
 ## Quickstart
 
@@ -36,8 +36,13 @@ cp /path/to/your-model.gguf models/
 cp .env.example .env
 # edit .env: set MODEL_FILE at minimum
 
-# 3. (Optional) Set up your own domain + HTTPS -- otherwise the stack is
-#    HTTP-only on localhost. See "Custom domain + HTTPS" below.
+# 3. Required -- generates certs/Caddyfile, portal/conf.yml, portal/docs/*.html,
+#    and searxng/settings.yml from their .example templates, plus a real CA +
+#    cert for HTTPS. There's no HTTP-only fallback mode: Caddy has no plain-HTTP
+#    site blocks defined, so skipping this step leaves Caddy (and Dashy) unable
+#    to start at all, not just running without TLS. "yourdomain.home" can be
+#    any name you like, or "localhost" if you don't want a custom domain --
+#    see "Custom domain + HTTPS" below either way.
 ./scripts/generate-local-ca.sh yourdomain.home
 
 # 4. Bring it up
@@ -52,7 +57,7 @@ Five services, one Docker network:
 - **`searxng`** — anonymous metasearch, no accounts, no tracking. Powers OpenWebUI's web-search feature.
 - **`openwebui`** — the chat UI, with real login (family/team use — see "Family Access").
 - **`dashy`** — a portal linking everything together.
-- **`caddy`** — TLS termination for all of the above. None of the other 4 services publish a host port directly — Caddy is the only thing bound to a host-facing port, terminating HTTPS and reverse-proxying internally. The plain-HTTP ports aren't reachable in parallel; hitting them returns a TLS-required error, not a fallback response.
+- **`caddy`** — TLS termination for all of the above. None of the other 4 services publish a host port reachable from the LAN — Caddy is the only thing bound to a host-facing port for that, terminating HTTPS and reverse-proxying internally. The one exception is `llm-server`'s `127.0.0.1:8080`, bound to loopback only so `scripts/benchmark.sh` can measure raw server performance without proxy/TLS overhead in the numbers — unreachable from any other device regardless.
 
 ## Swapping the model
 
@@ -160,3 +165,7 @@ Two things commonly cause this:
 - `nvidia-smi -ac` (application clocks / "VRAM overclock") is a documented no-op on recent driver versions — reports "deprecated" and doesn't change the measured memory clock. `-lgc` (core clock lock) is real and functional.
 - OpenWebUI's web-search feature is only invoked when the model's `function_calling` mode resolves to `"legacy"` — if you enable native tool-calling (`--jinja`) and OpenWebUI starts expecting the *model* to call a `web_search` tool itself instead (which isn't wired up by default), search silently stops working. `scripts/bootstrap-openwebui.sh` forces this back to `"legacy"` via OpenWebUI's own API.
 - If you add a healthcheck that hits SearXNG's `/search` endpoint, use a real lightweight path like `/healthz` instead — a search-query-shaped healthcheck fires real queries against real engines on every interval, and will eventually get your IP rate-limited by them.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE) — free to use, modify, and redistribute for any noncommercial purpose (personal, research, hobby, nonprofit/educational/government use). Not licensed for commercial use.

@@ -60,13 +60,18 @@
   <p>Add as an OpenAI-compatible provider: set the base URL to the endpoint above, model name as above, any string as the API key.</p>
 
   <h2>OpenCode</h2>
-  <p><code>~/.config/opencode/opencode.json</code> — add a provider with <code>baseURL</code> set to the endpoint above.</p>
+  <p><code>~/.config/opencode/opencode.json</code> — add a provider with <code>baseURL</code> set to the endpoint above. <code>"tool_call": true</code> is required — OpenCode doesn't auto-detect native tool-calling support for custom model IDs, and silently falls back to text-based emulation without it.</p>
   <pre>{
   "provider": {
     "local-llama": {
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "https://DOMAIN_PLACEHOLDER/llm/v1" },
-      "models": { "MODEL_NAME_PLACEHOLDER": { "name": "MODEL_NAME_PLACEHOLDER" } }
+      "models": {
+        "MODEL_NAME_PLACEHOLDER": {
+          "name": "MODEL_NAME_PLACEHOLDER",
+          "tool_call": true
+        }
+      }
     }
   }
 }</pre>

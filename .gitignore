@@ -3,6 +3,7 @@ models/
 openwebui-data/
 prometheus-data/
 grafana-data/
+benchmarks/*.json
 .env
 
 # Real generated CA/cert/Caddyfile/portal/searxng config -- see
@@ -19,3 +20,17 @@ portal/docs/index.html
 portal/docs/api.html
 portal/docs/environment.html
 searxng/settings.yml
+
+# Claude Code's own working files -- never committed, not project content.
+.claude/
+
+# Editor/IDE cruft.
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS cruft.
+.DS_Store
+Thumbs.db
