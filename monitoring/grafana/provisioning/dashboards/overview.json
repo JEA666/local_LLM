@@ -1,0 +1,189 @@
+{
+  "title": "System Overview",
+  "uid": "system-overview",
+  "description": "Essential at-a-glance state of the whole stack. Structured around the Golden Signals (latency, traffic, errors, saturation) as the top-level summary, then RED (app-level: LLM + Caddy) and USE (infra-level: host, GPU, containers) for the detail underneath -- see https://logz.io/blog/evops-sre-metrics/ for the framework. Complements, not replaces, the 4 per-source dashboards (LLM Server, Caddy, Node Exporter Full, Cadvisor exporter).",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    { "id": 100, "type": "row", "title": "Golden signals", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+
+    {
+      "id": 1,
+      "title": "Traffic (req/s, all services)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total[5m]))", "legendFormat": "req/s", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latency (p95, all services)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }
+      ] } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Errors (5xx rate)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "red", "value": 0.01 }
+      ] } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"5..\"}[5m]))", "legendFormat": "5xx/s", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Saturation (GPU util)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.95 }
+      ] } }, "overrides": [] },
+      "targets": [
+        { "expr": "avg(nvidia_smi_utilization_gpu_ratio)", "legendFormat": "GPU util", "datasource": "Prometheus" }
+      ]
+    },
+
+    { "id": 101, "type": "row", "title": "LLM + Caddy (RED -- app level)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
+
+    {
+      "id": 10,
+      "title": "Generation throughput (tok/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:predicted_tokens_seconds", "legendFormat": "generation tok/s", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "LLM queue depth (processing / deferred)",
+      "description": "Saturation signal for the LLM itself: deferred > 0 means requests are queued behind the model's concurrency limit.",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "llamacpp:requests_processing", "legendFormat": "processing", "datasource": "Prometheus" },
+        { "expr": "llamacpp:requests_deferred", "legendFormat": "deferred", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Request rate + errors by route",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total[5m])) by (server)", "legendFormat": "{{server}}", "datasource": "Prometheus" },
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"5..\"}[5m])) by (server)", "legendFormat": "{{server}} 5xx", "datasource": "Prometheus" }
+      ]
+    },
+
+    { "id": 102, "type": "row", "title": "Host + GPU + containers (USE -- infra level)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 } },
+
+    {
+      "id": 20,
+      "title": "CPU utilization",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 15 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "CPU util", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Memory utilization",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 15 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 }, "overrides": [] },
+      "targets": [
+        { "expr": "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "legendFormat": "mem util", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "GPU: utilization / VRAM / temp / power",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 15 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "avg(nvidia_smi_utilization_gpu_ratio) * 100", "legendFormat": "util %", "datasource": "Prometheus" },
+        { "expr": "avg(nvidia_smi_memory_used_bytes / nvidia_smi_memory_total_bytes) * 100", "legendFormat": "VRAM %", "datasource": "Prometheus" },
+        { "expr": "avg(nvidia_smi_temperature_gpu)", "legendFormat": "temp C", "datasource": "Prometheus" },
+        { "expr": "avg(nvidia_smi_power_draw_watts)", "legendFormat": "power W", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Load average (1m / 5m / 15m)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 15 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "expr": "node_load1", "legendFormat": "1m", "datasource": "Prometheus" },
+        { "expr": "node_load5", "legendFormat": "5m", "datasource": "Prometheus" },
+        { "expr": "node_load15", "legendFormat": "15m", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Root filesystem free",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 22 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"}", "legendFormat": "free", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Per-container CPU (top 8)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 22 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "expr": "topk(8, sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[5m])) by (name))", "legendFormat": "{{name}}", "datasource": "Prometheus" }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Per-container memory (top 8)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 22 },
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "expr": "topk(8, sum(container_memory_working_set_bytes{name!=\"\"}) by (name))", "legendFormat": "{{name}}", "datasource": "Prometheus" }
+      ]
+    }
+  ]
+}

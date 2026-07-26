@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environment — local_LLM docs</title>
+<link rel="stylesheet" href="docs.css">
+<style>
+  main.wide { max-width: 1040px; }
+
+  .lede-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .lede-row .tag {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 0.2rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  /* ---- section labels ---- */
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin: 0 0 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* ---- flow diagram ---- */
+
+  .flow { margin-bottom: 3.5rem; }
+
+  .node-row {
+    display: flex;
+    justify-content: center;
+  }
+
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.85rem 1.4rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+  }
+
+  .node .name {
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  .node .detail {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+  }
+
+  .entry-node .detail { color: var(--text-muted); }
+
+  .connector {
+    width: 1px;
+    height: 2rem;
+    background: var(--line-strong);
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .connector::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--line-strong);
+  }
+
+  .caddy-node {
+    border-color: var(--zone-danger);
+    border-width: 2px;
+    background: linear-gradient(180deg, var(--zone-danger-soft), var(--surface) 60%);
+    padding: 1.1rem 2rem;
+    position: relative;
+  }
+
+  .danger-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--zone-danger);
+    background: var(--zone-danger-soft);
+    border: 1px solid var(--zone-danger);
+    border-radius: 3px;
+    padding: 0.08rem 0.45rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .caddy-node .name {
+    font-size: 1.1rem;
+    color: var(--zone-danger);
+  }
+
+  .caddy-node .detail {
+    color: var(--text);
+    opacity: 0.75;
+  }
+
+  .caddy-node .ports {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    letter-spacing: 0.02em;
+  }
+
+  .bus-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .bus-stem {
+    width: 1px;
+    height: 1.5rem;
+    background: var(--line-strong);
+  }
+
+  .bus-line {
+    height: 1px;
+    background: var(--line-strong);
+    width: 100%;
+    max-width: 900px;
+  }
+
+  .service-row {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 2rem;
+    flex-wrap: nowrap;
+    padding-top: 1.5rem;
+    max-width: 100%;
+    margin: 0 auto;
+    overflow-x: auto;
+  }
+
+  .group-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    border: 1px dashed var(--line-strong);
+    border-radius: 10px;
+    padding: 1.5rem 1rem 1rem;
+  }
+
+  .group-box::before {
+    content: "";
+    position: absolute;
+    top: -1.5rem;
+    left: 50%;
+    width: 1px;
+    height: 1.5rem;
+    background: var(--line-strong);
+  }
+
+  .group-label {
+    position: absolute;
+    top: -0.6rem;
+    left: 0.9rem;
+    background: var(--bg);
+    padding: 0 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .group-llm .group-label { color: var(--zone-services); }
+  .group-obs .group-label { color: var(--zone-monitor); }
+  .group-back .group-label { color: var(--zone-back); }
+
+  .group-back {
+    border-style: solid;
+    border-color: var(--zone-back);
+    padding: 1.4rem 0.9rem 0.9rem;
+  }
+
+  .group-back::before { content: none; }
+
+  .group-cards {
+    display: flex;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .obs-column {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    width: 380px;
+    flex-shrink: 0;
+  }
+
+  .group-llm { flex-shrink: 0; }
+
+  .obs-column .group-box { width: 100%; }
+
+  .obs-connector {
+    width: 1px;
+    height: 1.4rem;
+    background: var(--line-strong);
+  }
+
+  .back-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--zone-back);
+    border-radius: 8px;
+    padding: 0.6rem 0.7rem 0.7rem;
+    box-shadow: var(--shadow);
+    min-width: 108px;
+  }
+
+  .back-card .name {
+    font-weight: 700;
+    font-size: 0.8rem;
+  }
+
+  .back-card .port {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
+  .service-card {
+    flex: 1 1 150px;
+    max-width: 190px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--zone-services);
+    border-radius: 8px;
+    padding: 0.9rem 0.9rem 1rem;
+    box-shadow: var(--shadow);
+  }
+
+  .service-card .name {
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+
+  .service-card .role {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+  }
+
+  .service-card .port {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    color: var(--zone-services);
+    margin-top: 0.55rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .service-card.front .port { color: var(--accent); }
+  .service-card.front { border-top-color: var(--accent); }
+
+  .front-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 3px;
+    padding: 0.08rem 0.4rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .monitor-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--zone-monitor);
+    background: var(--zone-monitor-soft);
+    border-radius: 3px;
+    padding: 0.08rem 0.4rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .service-card.monitor { border-top-color: var(--zone-monitor); }
+  .service-card.monitor .port { color: var(--zone-monitor); }
+
+  /* ---- lower panels ---- */
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  @media (max-width: 720px) {
+    .panels { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.3rem 1.4rem 1.5rem;
+    box-shadow: var(--shadow);
+  }
+
+  .panel h2 {
+    font-size: 0.95rem;
+    margin: 0 0 0.2rem;
+  }
+
+  .panel .panel-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0 0 1.1rem;
+  }
+
+  .call-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .call {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+  }
+
+  .call .who {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .call .arrow {
+    color: var(--zone-services);
+    font-family: var(--mono);
+  }
+
+  .call .why {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .scrape-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .scrape {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+
+  .scrape .src {
+    color: var(--zone-monitor);
+    min-width: 8.5rem;
+    flex-shrink: 0;
+  }
+
+  .scrape .note {
+    font-family: var(--sans);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .exception-note {
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .exception-note strong { color: var(--text); }
+
+  /* ---- legend ---- */
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.4rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .legend .item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .diagram-note {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    margin: 0.8rem 0 0;
+  }
+
+  .diagram-note code {
+    background: var(--surface-2);
+    padding: 0.03rem 0.3rem;
+    border-radius: 3px;
+  }
+
+  .swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .swatch.caddy { background: var(--zone-danger); }
+  .swatch.svc { background: var(--zone-services); }
+  .swatch.mon { background: var(--zone-monitor); }
+  .swatch.back { background: var(--zone-back); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">local_LLM</div>
+  <div class="brand-sub">docs</div>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="api.html">API</a>
+    <a href="environment.html" class="active">Environment</a>
+    <div class="divider"></div>
+    <a href="https://github.com/JEA666/local_LLM.git" class="external" target="_blank" rel="noopener">GitHub Repo</a>
+  </nav>
+</aside>
+
+<main class="wide">
+  <div class="lede-row">
+    <div>
+      <h1 style="margin-bottom:0.2rem">Environment</h1>
+      <div class="lede" style="margin:0">local_LLM stack · DOMAIN_PLACEHOLDER</div>
+    </div>
+    <span class="tag">docker compose · single host</span>
+  </div>
+
+  <div class="flow">
+    <p class="section-label">Incoming traffic</p>
+
+    <div class="node-row">
+      <div class="node entry-node">
+        <div class="name">Internet / LAN</div>
+      </div>
+    </div>
+
+    <div class="connector"></div>
+
+    <div class="node-row">
+      <div class="node caddy-node">
+        <span class="danger-tag">danger zone</span>
+        <div class="name">Caddy</div>
+        <div class="detail">TLS termination</div>
+        <div class="ports">:443 · :3000</div>
+      </div>
+    </div>
+
+    <div class="bus-wrap">
+      <div class="bus-stem"></div>
+      <div class="bus-line"></div>
+    </div>
+
+    <div class="service-row">
+      <div class="group-box group-llm">
+        <span class="group-label">LLM stack</span>
+        <div class="group-cards">
+          <div class="service-card front">
+            <span class="front-tag">portal</span>
+            <div class="name">Dashy</div>
+            <div class="port">/</div>
+          </div>
+          <div class="service-card">
+            <div class="name">OpenWebUI</div>
+            <div class="role">Chat</div>
+            <div class="port">:3000</div>
+          </div>
+          <div class="service-card">
+            <div class="name">SearXNG</div>
+            <div class="role">Search</div>
+            <div class="port">/search</div>
+          </div>
+          <div class="service-card">
+            <div class="name">llm-server</div>
+            <div class="role">Inference (GPU)</div>
+            <div class="port">/llm</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="obs-column">
+        <div class="group-box group-obs">
+          <span class="group-label">Obs stack</span>
+          <div class="group-cards">
+            <div class="service-card monitor">
+              <span class="monitor-tag">optional</span>
+              <div class="name">Grafana</div>
+              <div class="port">/obs</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="obs-connector"></div>
+
+        <div class="group-box group-back">
+          <span class="group-label">Back end</span>
+          <div class="group-cards">
+            <div class="back-card">
+              <div class="name">prometheus</div>
+              <div class="port">:9090</div>
+            </div>
+            <div class="back-card">
+              <div class="name">node-exporter</div>
+              <div class="port">:9100</div>
+            </div>
+            <div class="back-card">
+              <div class="name">cadvisor</div>
+              <div class="port">:8080</div>
+            </div>
+            <div class="back-card">
+              <div class="name">gpu-exporter</div>
+              <div class="port">:9835</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="item"><span class="swatch caddy"></span> Caddy (exposed)</div>
+      <div class="item"><span class="swatch svc"></span> LLM stack</div>
+      <div class="item"><span class="swatch mon"></span> Obs stack (optional)</div>
+      <div class="item"><span class="swatch back"></span> Back end (internal only)</div>
+    </div>
+    <p class="diagram-note">Path-routed under Caddy's single <code>:443</code>, except OpenWebUI (own port -- no subpath support in its SvelteKit build).</p>
+  </div>
+
+  <p class="section-label">Internal, independent of Caddy</p>
+
+  <div class="panels">
+    <div class="panel">
+      <h2>Service-to-service</h2>
+      <p class="panel-sub"><code>local-llm-net</code>, never via Caddy</p>
+      <div class="call-list">
+        <div class="call">
+          <span class="who">OpenWebUI</span>
+          <span class="arrow">→</span>
+          <span class="who">llm-server</span>
+          <span class="why">inference</span>
+        </div>
+        <div class="call">
+          <span class="who">OpenWebUI</span>
+          <span class="arrow">→</span>
+          <span class="who">SearXNG</span>
+          <span class="why">web search</span>
+        </div>
+      </div>
+      <div class="exception-note">
+        Only Caddy publishes ports to the host.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Monitoring stack</h2>
+      <p class="panel-sub"><code>compose.monitoring.yml</code></p>
+      <div class="scrape-list">
+        <div class="scrape"><span class="src">prometheus</span><span class="note">scrapes the five below</span></div>
+        <div class="scrape"><span class="src">↳ llm-server</span><span class="note">token throughput</span></div>
+        <div class="scrape"><span class="src">↳ caddy</span><span class="note">response times</span></div>
+        <div class="scrape"><span class="src">↳ node-exporter</span><span class="note">CPU/memory/disk</span></div>
+        <div class="scrape"><span class="src">↳ cadvisor</span><span class="note">per-container</span></div>
+        <div class="scrape"><span class="src">↳ gpu-exporter</span><span class="note">GPU util/VRAM/power</span></div>
+        <div class="scrape"><span class="src">grafana</span><span class="note">queries prometheus</span></div>
+      </div>
+      <div class="exception-note">
+        <strong>cadvisor</strong>: only exception to "no docker.sock", read-only.
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

@@ -11,26 +11,40 @@
 
 DOMAIN_PLACEHOLDER:443 {
 	tls /certs/server.crt /certs/server.key
-	reverse_proxy dashy:8080
+
+	# SearXNG and Grafana both have their own subpath-aware middleware
+	# (SearXNG: searx/flaskfix.py's ReverseProxyPathFix, reads server.base_url;
+	# Grafana: root_url + serve_from_sub_path in grafana.ini) -- both expect
+	# to receive the FULL path including the prefix and strip it themselves,
+	# so this must be `handle`, not `handle_path` (which would strip it here
+	# instead and break their internal link generation).
+	handle /search/* {
+		reverse_proxy searxng:8080
+	}
+
+	# Optional: only reachable if deployments/compose.monitoring.yml is up.
+	handle /obs/* {
+		reverse_proxy grafana:3000
+	}
+
+	# llm-server has zero prefix awareness (its own routes are fixed, e.g.
+	# /v1/chat/completions) -- Caddy strips the prefix before forwarding.
+	handle_path /llm/* {
+		reverse_proxy llm-server:8080
+	}
+
+	# Catch-all: Dashy, the portal. Also serves portal/api.html and
+	# certs/ca.crt as static files from its own public dir (bind-mounted in
+	# compose.yml) -- unaffected by the routes above.
+	handle {
+		reverse_proxy dashy:8080
+	}
 }
 
+# OpenWebUI can't be path-routed -- its SvelteKit build has absolute
+# root-relative asset paths (/static/..., /_app/immutable/...) baked in at
+# build time, with no subpath/base-path config available. Stays on its own port.
 DOMAIN_PLACEHOLDER:3000 {
 	tls /certs/server.crt /certs/server.key
 	reverse_proxy openwebui:8080
-}
-
-DOMAIN_PLACEHOLDER:8081 {
-	tls /certs/server.crt /certs/server.key
-	reverse_proxy searxng:8080
-}
-
-DOMAIN_PLACEHOLDER:8080 {
-	tls /certs/server.crt /certs/server.key
-	reverse_proxy llm-server:8080
-}
-
-# Optional: only needed if using deployments/compose.monitoring.yml
-DOMAIN_PLACEHOLDER:3001 {
-	tls /certs/server.crt /certs/server.key
-	reverse_proxy grafana:3000
 }

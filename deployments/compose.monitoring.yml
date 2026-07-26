@@ -40,8 +40,13 @@ services:
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($$|/)
 
   cadvisor:
-    # Pinned from gcr.io/cadvisor/cadvisor:v0.49.1 -- see fmt/docker/dockerfile.md.
-    image: gcr.io/cadvisor/cadvisor@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
+    # Pinned from gcr.io/cadvisor/cadvisor:v0.55.1 -- see fmt/docker/dockerfile.md.
+    # v0.49.1 shipped a Docker API client stuck at v1.41; this host's Docker
+    # Engine (29.1.3) requires a minimum of v1.44, so the docker container
+    # factory failed to register and cadvisor only ever emitted raw cgroup
+    # metrics -- no per-container labels, no data in the dashboard. v0.55.1's
+    # client registers successfully (confirmed via container logs).
+    image: gcr.io/cadvisor/cadvisor@sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57
     container_name: cadvisor
     restart: unless-stopped
     networks:
@@ -69,6 +74,24 @@ services:
         soft: 65536
         hard: 65536
 
+  gpu-exporter:
+    # Pinned from utkuozdemir/nvidia_gpu_exporter:1.3.1 -- see
+    # fmt/docker/dockerfile.md. Wraps nvidia-smi; confirmed real GPU
+    # utilization/VRAM/temp/power output via a standalone test run.
+    image: utkuozdemir/nvidia_gpu_exporter@sha256:9c6180c26d33f29eb92bad6e74fd4dbf5184c625724f67553c57865876c50a2a
+    container_name: gpu-exporter
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # No host port -- internal only, same as the other exporters.
+
   grafana:
     # Pinned from grafana/grafana:11.3.1 -- see fmt/docker/dockerfile.md.
     image: grafana/grafana@sha256:fa801ab6e1ae035135309580891e09f7eb94d1abdbd2106bdc288030b028158c
@@ -80,21 +103,29 @@ services:
       # Dashboards/datasources are provisioned from files (below), not
       # hand-clicked -- matches fmt/observability/grafana.md's "dashboard as
       # code" principle, adapted from ConfigMaps to bind-mounts.
-      - GF_AUTH_ANONYMOUS_ENABLED=false
+      #
+      # Anonymous Viewer access: same no-auth-on-LAN posture already used for
+      # Dashy and SearXNG -- dashboards hold no sensitive data, just metrics.
+      # Needed for the Dashy "System Overview" kiosk-mode deep link to work
+      # at all: with anonymous disabled, the link hits Grafana's login page
+      # first, and the post-login redirect drops the dashboard+kiosk target,
+      # landing on the plain dashboard list instead (confirmed bug). Editing/
+      # admin still requires real login -- Viewer role can't change anything.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Path-routed under Caddy's single :443 instead of its own port --
+      # Grafana needs to know its own external prefix to generate correct
+      # links/assets. Caddy forwards the full /obs/... path unstripped
+      # (see certs/Caddyfile), matching serve_from_sub_path's expectation.
+      - GF_SERVER_ROOT_URL=https://${DOMAIN}/obs/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana-data:/var/lib/grafana
     # No host port -- reachable only via Caddy, same as every other service.
-
-  # Grafana needs a Caddy-fronted route too (see certs/Caddyfile's :3001
-  # block) -- adds the extra port to the caddy service already defined in
-  # compose.yml. Compose merges `ports:` across -f files (concatenates,
-  # doesn't replace), confirmed via `docker compose config` before relying
-  # on it here.
-  caddy:
-    ports:
-      - "3001:3001"
+    # Path-routed at /obs/ under Caddy's main :443 (see certs/Caddyfile) --
+    # no dedicated port needed here, unlike the earlier port-per-service setup.
 
 networks:
   local-llm-net:

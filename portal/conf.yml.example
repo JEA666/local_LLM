@@ -25,16 +25,42 @@ sections:
     items:
       - title: Anonymous Search
         description: SearXNG -- no login, no tracking
-        url: https://DOMAIN_PLACEHOLDER:8081
+        url: https://DOMAIN_PLACEHOLDER/search/
         icon: fas fa-user-secret
 
-  - name: API
+  - name: Documentation
     icon: fas fa-code
     items:
-      # A real page with selectable/copyable text (endpoint, model, curl,
-      # client config), not icon tiles -- Dashy's tile format doesn't fit
-      # reference info well. See portal/api.html.
-      - title: API Docs
-        description: Endpoint, model name, curl example, client setup
-        url: https://DOMAIN_PLACEHOLDER/api.html
-        icon: fas fa-plug
+      # A real static site (project overview, API reference, architecture
+      # diagram), not icon tiles -- Dashy's tile format doesn't fit reference
+      # info well. See portal/docs/. GitHub Repo link lives in its sidebar now.
+      - title: Docs
+        description: Project overview, API reference, architecture diagram
+        url: https://DOMAIN_PLACEHOLDER/docs/index.html
+        icon: fas fa-book
+
+  - name: Observability
+    icon: fas fa-chart-line
+    items:
+      # Optional -- only reachable if deployments/compose.monitoring.yml is
+      # also up. See README.md "Monitoring".
+      # ?kiosk (full kiosk) strips all nav chrome, including Grafana 11's
+      # left icon rail (Home/Bookmarks/Dashboards/Alerting) -- ?kiosk=tv only
+      # hides the top global bar and leaves the icon rail visible, which
+      # looks like it's not fully in presentation mode. Dashboard stays
+      # fully live/interactive either way. Full Grafana (dashboard list,
+      # editing, admin) lives under the Admin tile instead.
+      - title: System Overview
+        description: Golden Signals + RED + USE at a glance, presentation mode
+        url: https://DOMAIN_PLACEHOLDER/obs/d/system-overview/system-overview?kiosk
+        icon: fas fa-tachometer-alt
+
+  - name: Admin
+    icon: fas fa-user-shield
+    items:
+      # Optional -- only reachable if deployments/compose.monitoring.yml is
+      # also up. See README.md "Monitoring".
+      - title: Grafana
+        description: Full dashboard list, editing, datasources, admin
+        url: https://DOMAIN_PLACEHOLDER/obs/
+        icon: fas fa-chart-line

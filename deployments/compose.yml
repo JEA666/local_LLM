@@ -144,10 +144,12 @@ services:
     # (an earlier mistake here) has no effect on what the app actually uses.
     volumes:
       - ./portal/conf.yml:/app/user-data/conf.yml
-      # Static page (real copyable text/table, not icon tiles) for API
-      # connection info -- served from public/, which express.static still
-      # serves for any path not present in user-data/ or dist/.
-      - ./portal/api.html:/app/public/api.html
+      # Static docs site (real copyable text/tables, not icon tiles; a real
+      # architecture diagram) -- served from public/, which express.static
+      # still serves for any path not present in user-data/ or dist/. Whole
+      # directory mounted (not single files) since it's now index/api/
+      # environment/docs.css, not just one page.
+      - ./portal/docs:/app/public/docs:ro
       # Downloadable root CA (public cert only, never the key) so people
       # can get it without filesystem access -- see docs/api.html's TLS note.
       - ./certs/ca.crt:/app/public/ca.crt:ro
@@ -176,13 +178,12 @@ services:
       - ./certs/Caddyfile:/etc/caddy/Caddyfile
       - ./certs/server.crt:/certs/server.crt:ro
       - ./certs/server.key:/certs/server.key:ro
-    # The sole entry point for all 4 services -- TLS-terminated versions of
-    # the same ports they used to publish directly. See certs/Caddyfile.
+    # The sole entry point for all services. Path-routed under :443
+    # (dashy/searxng/llm-server/grafana) except OpenWebUI, which can't be
+    # path-routed -- see certs/Caddyfile.
     ports:
       - "443:443"
       - "3000:3000"
-      - "8081:8081"
-      - "8080:8080"
 
 networks:
   local-llm-net:

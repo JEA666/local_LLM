@@ -12,6 +12,11 @@ use_default_settings: true
 server:
   secret_key: "REPLACE_ME_WITH_YOUR_OWN_openssl_rand_hex_32"
   image_proxy: true
+  # Path-routed under Caddy's single :443 instead of its own port -- SearXNG's
+  # own ReverseProxyPathFix middleware (searx/flaskfix.py) derives its
+  # internal path prefix from this and strips it itself. Caddy forwards the
+  # full /search/... path unstripped (see certs/Caddyfile) to match.
+  base_url: "https://DOMAIN_PLACEHOLDER/search/"
 
 search:
   formats:

@@ -15,5 +15,7 @@ certs/*.csr
 certs/san.cnf
 certs/Caddyfile
 portal/conf.yml
-portal/api.html
+portal/docs/index.html
+portal/docs/api.html
+portal/docs/environment.html
 searxng/settings.yml

@@ -21,9 +21,11 @@ Follows the layout convention in `fmt/go/project_layout.md` (a platform-engineer
 | `docs/` | `api.md` — API reference |
 | `portal/`, `searxng/`, `certs/`, `models/`, `openwebui-data/`, `benchmarks/` | Live per-service config/data. `.example` templates are tracked; the real generated files are git-ignored (see "Quickstart") |
 
-**Gotcha — editing single-file bind mounts**: `compose.yml` bind-mounts individual files (`portal/conf.yml`, `portal/api.html`, `certs/Caddyfile`, cert files). Docker binds these to a specific inode, not the path. An editor that writes atomically (write a temp file, then rename over the original — the safe-write pattern most editors use) replaces the inode, silently breaking the mount: the container keeps serving the old, now-unlinked file. Fix is always the same — restart the container after editing (`docker restart <service>`), don't assume a live bind mount means live-reloading.
+**Gotcha — editing single-file bind mounts**: `compose.yml` bind-mounts individual files (`portal/conf.yml`, `certs/Caddyfile`, cert files) and one directory (`portal/docs/`). Docker binds these to a specific inode, not the path. An editor that writes atomically (write a temp file, then rename over the original — the safe-write pattern most editors use) replaces the inode, silently breaking the mount: the container keeps serving the old, now-unlinked file. Fix is always the same — restart the container after editing (`docker restart <service>`), don't assume a live bind mount means live-reloading.
 
 ## Quickstart
+
+**Don't know which model fits your hardware, or how to set `N_CPU_MOE`/`NGL`/`CONTEXT_SIZE`?** Point an AI coding assistant at [`prompt.md`](prompt.md) — it's a runbook for detecting your actual GPU/CPU/RAM and reasoning from that to a real `MODEL_FILE` choice and tuned `.env`, not generic advice.
 
 ```bash
 # 1. Put your model in models/
@@ -79,8 +81,10 @@ A Dashy portal ties the stack together for other devices on your network:
 |---|---|---|
 | Portal | `https://<your-domain>/` | None by default — see `portal/conf.yml.example` if you want Dashy's own (client-side-only) login |
 | OpenWebUI (chat) | `https://<your-domain>:3000` | Real login — admin creates each account via Admin Panel → Users. Public signup is off by default (`ENABLE_SIGNUP=False` in `compose.yml`) |
-| SearXNG (search) | `https://<your-domain>:8081` | None, deliberately — anonymous utility |
-| API | `https://<your-domain>:8080/v1` | None — see `docs/api.md` |
+| SearXNG (search) | `https://<your-domain>/search/` | None, deliberately — anonymous utility |
+| API | `https://<your-domain>/llm/v1` | None — see `docs/api.md` |
+
+Everything is path-routed under Caddy's single `:443` except OpenWebUI, which keeps its own port — its SvelteKit build has absolute root-relative asset paths baked in at build time, with no subpath support available (checked the whole backend source). SearXNG and Grafana both have real subpath-aware middleware built in, so they work correctly under a path prefix; `llm-server` is a pure REST API with no embedded links, so a stripped prefix is transparent to it either way. See `certs/Caddyfile` for the routing.
 
 **Gotcha, hit more than once**: OpenWebUI uses a "PersistentConfig" pattern where an env var only seeds a setting the *first* time its data volume is initialized — after that, only the database (or the Admin UI) can change it. If you ever change `OPENAI_API_BASE_URL` or `SEARXNG_QUERY_URL` in `compose.yml` after the stack has already run once, the env var change alone won't take effect. `scripts/bootstrap-openwebui.sh` re-applies the settings this project actually needs directly against the database — run it after any topology change (or after a fresh `openwebui-data/` volume) rather than assuming a `compose.yml` edit is enough on its own.
 
@@ -94,30 +98,32 @@ If your domain isn't publicly delegated (anything ending in `.home`, `.lan`, `.l
 - **iOS**: AirDrop or email `ca.crt` to the device → Settings → General → VPN & Device Management → install the profile → then Settings → General → About → Certificate Trust Settings → enable full trust for it (iOS requires this as a separate step)
 - **Android**: Settings → Security → Encryption & credentials → Install a certificate → CA certificate
 
-Devices without the CA installed still connect fine — they just see the usual untrusted-certificate warning. `ca.crt` is also served at `https://<your-domain>/ca.crt` once the stack is up, so people can grab it without filesystem access — see `portal/api.html.example`.
+Devices without the CA installed still connect fine — they just see the usual untrusted-certificate warning. `ca.crt` is also served at `https://<your-domain>/ca.crt` once the stack is up, so people can grab it without filesystem access — see `portal/docs/api.html.example`.
 
 If you own a real registered domain, a proper Let's Encrypt certificate via DNS-01 challenge (no port exposure needed) is possible and removes the per-device install step entirely — not automated by this project, since it depends on your specific DNS provider's API.
 
 ## Monitoring
 
-Optional — a lightweight metrics stack (Prometheus + Grafana + node_exporter + cAdvisor), not folded into the main `compose.yml` since not everyone running this wants a Grafana instance. Bring it up alongside the main stack:
+Optional — a lightweight metrics stack (Prometheus + Grafana + node_exporter + cAdvisor + a GPU exporter), not folded into the main `compose.yml` since not everyone running this wants a Grafana instance. The GPU exporter requires an NVIDIA GPU + the NVIDIA container runtime (same requirement as `llm-server` itself); drop the `gpu-exporter` service from `compose.monitoring.yml` if running on other hardware. Bring it up alongside the main stack:
 
 ```bash
 docker compose -f deployments/compose.yml -f deployments/compose.monitoring.yml up -d
 ```
 
-Dashboards are provisioned from files (`monitoring/grafana/provisioning/`), not hand-clicked — open `https://<your-domain>:3001` (default login `admin`/`admin`, set `GRAFANA_ADMIN_PASSWORD` in `.env` before exposing this beyond localhost) and four dashboards are already there:
+Dashboards are provisioned from files (`monitoring/grafana/provisioning/`), not hand-clicked — open `https://<your-domain>/obs/` (default login `admin`/`admin`, set `GRAFANA_ADMIN_PASSWORD` in `.env` before exposing this beyond localhost) and five dashboards are already there:
 
 | Dashboard | Covers |
 |---|---|
+| **System Overview** | The essential, at-a-glance state of the whole stack — Golden Signals (latency, traffic, errors, saturation) up top, then RED (LLM + Caddy) and USE (host, GPU, containers) underneath. Start here; the other four are for drilling into one source |
 | **LLM Server** | `llm-server`'s own `/metrics` (already enabled via `--metrics` in `compose.yml`) — generation/prompt throughput, requests processing/deferred, total tokens |
 | **Caddy (response metrics)** | Request rate, status codes, and p50/p95/p99 latency per reverse-proxied route — covers `dashy`/`openwebui`/`searxng` too, since neither has a native `/metrics` of its own |
 | **Node Exporter Full** | Host-level CPU, memory, disk, network (the standard community reference dashboard) |
 | **Cadvisor exporter** | Per-container CPU/memory/network |
 
-**Two things worth knowing before enabling this**:
+**Things worth knowing before enabling this**:
 - **cAdvisor needs read-only `docker.sock` access** to introspect containers — a deliberate exception to this project's usual stance of avoiding it (the Dashy portal explicitly doesn't get it). Everything cAdvisor mounts is read-only and it exposes only its own metrics endpoint, but it's still real introspection capability worth knowing is there.
 - **cAdvisor needs a decent `fs.inotify.max_user_instances`** — it opens many inotify watches across every container's cgroups on the host, and can crash on startup with `inotify_init: too many open files` on a low default (128 is Ubuntu's default and not enough once several other things are also running). If you hit this, raise it permanently: `echo 'fs.inotify.max_user_instances=4096' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system`.
+- **cAdvisor is pinned to v0.55.1, not the newest release** — v0.49.1 (and anything relying on an older bundled Docker API client) fails to register the docker container factory against modern Docker Engine versions (client v1.41 vs. a v1.44 minimum), and only ever emits raw cgroup metrics with no per-container labels. If cAdvisor's dashboard shows no data, this is the first thing to check (`docker logs cadvisor`).
 
 ## OpenCode Setup
 
@@ -134,7 +140,7 @@ Two things commonly cause this:
   "provider": {
     "local-llama": {
       "npm": "@ai-sdk/openai-compatible",
-      "options": { "baseURL": "https://<your-domain>:8080/v1" },
+      "options": { "baseURL": "https://<your-domain>/llm/v1" },
       "models": {
         "your-model-name": {
           "tool_call": true,

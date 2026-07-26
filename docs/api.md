@@ -1,9 +1,9 @@
 # LLM API access
 
-`llm-server` exposes an OpenAI-compatible API (llama.cpp's built-in server), reachable from any device on the network if you're using the Caddy/TLS setup, or `http://localhost:8080/v1` for local-only access:
+`llm-server` exposes an OpenAI-compatible API (llama.cpp's built-in server), reachable from any device on the network via Caddy at the `/llm` path (path-routed under Caddy's single `:443`, not its own port -- `llm-server` itself has no idea about the `/llm` prefix, Caddy strips it before forwarding):
 
 ```
-https://<your-domain>:8080/v1
+https://<your-domain>/llm/v1
 ```
 
 Replace `<your-domain>` with whatever you set `DOMAIN` to in `.env` (see [`scripts/generate-local-ca.sh`](../scripts/generate-local-ca.sh) and `README.md` "Custom domain + HTTPS").
@@ -15,7 +15,7 @@ Model name: whatever `MODEL_FILE` is set to in `.env`, without the `.gguf` exten
 ## Example
 
 ```bash
-curl https://<your-domain>:8080/v1/chat/completions \
+curl https://<your-domain>/llm/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "your-model-name",

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>local_LLM docs</title>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">local_LLM</div>
+  <div class="brand-sub">docs</div>
+  <nav>
+    <a href="index.html" class="active">Home</a>
+    <a href="api.html">API</a>
+    <a href="environment.html">Environment</a>
+    <div class="divider"></div>
+    <a href="https://github.com/JEA666/local_LLM.git" class="external" target="_blank" rel="noopener">GitHub Repo</a>
+  </nav>
+</aside>
+
+<main>
+  <h1>local_LLM</h1>
+  <p class="lede">A self-hosted, GPU-accelerated local LLM stack — llama.cpp inference, a chat UI, anonymous search, and a portal to tie it together. Runs on a single Docker host, fronted by Caddy.</p>
+
+  <div class="card-links">
+    <a href="api.html">
+      <div class="card-title">API</div>
+      <div class="card-desc">Endpoint, curl example, OpenCode/VSCode setup, CA certificate install</div>
+    </a>
+    <a href="environment.html">
+      <div class="card-title">Environment</div>
+      <div class="card-desc">Architecture diagram — Caddy routing, the LLM stack, the optional Obs stack</div>
+    </a>
+  </div>
+
+  <h2>What's running</h2>
+  <p>Dashy (portal), OpenWebUI (chat), SearXNG (anonymous search), and <code>llm-server</code> (llama.cpp's OpenAI-compatible API) — all reverse-proxied through Caddy, the sole entry point. An optional monitoring stack (Prometheus + Grafana + exporters) can run alongside. See <a href="environment.html">Environment</a> for how it all fits together.</p>
+</main>
+
+</body>
+</html>
