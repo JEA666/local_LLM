@@ -1,0 +1,114 @@
+services:
+  admin:
+    # First custom-built image in this project -- everything else is a
+    # pinned official upstream image. See admin/Dockerfile.
+    #
+    # Relative paths here resolve against --project-directory (the repo
+    # root, per scripts/stack-up.sh's invocation pattern), NOT against this
+    # file's own directory (deployments/) -- so this is ./admin, and the
+    # volume below is .:/repo, not ../admin / ..:/repo.
+    build:
+      context: ./admin
+    container_name: admin
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    depends_on:
+      - docker-socket-proxy
+    environment:
+      - REPO_DIR=/repo
+      # This service drives `docker compose` from inside its own container,
+      # which talks to the HOST's daemon via docker-socket-proxy (below) --
+      # relative volume paths in compose.yml (./models, ./certs, ...) must
+      # resolve against a real host path (passed via --project-directory),
+      # not the container-internal /repo mount above, or the daemon
+      # bind-mounts an empty directory instead of the real one. See
+      # .env.example.
+      - HOST_REPO_DIR=${HOST_REPO_DIR:?Set HOST_REPO_DIR in .env -- see .env.example}
+      # No direct docker.sock access (see docker-socket-proxy below) -- the
+      # `docker` CLI honors DOCKER_HOST from its process environment
+      # automatically, no code change needed for this to take effect.
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
+    volumes:
+      # Repo root, read-write -- needed to rewrite .env (model switching)
+      # and to read models/*.gguf, scripts/*.sh, portal/docs/hardware.html.
+      - .:/repo
+    # Needed for scripts/detect-hardware.sh's nvidia-smi call to report
+    # real GPU data instead of "not detected".
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # No host port -- reachable only via Caddy (see certs/Caddyfile), same
+    # as every other service.
+
+  docker-socket-proxy:
+    # Pinned from tecnativa/docker-socket-proxy:latest (v0.5.0, 2026-07-27)
+    # -- see fmt/docker/dockerfile.md.
+    #
+    # The only container with any access to the real docker.sock for the
+    # admin flow -- admin itself talks to this over the network instead
+    # (DOCKER_HOST above). Exposes a restricted, allowlisted subset of the
+    # Docker API rather than the whole socket: containers/images/networks
+    # and start/stop/restart are allowed (needed for `docker compose up -d
+    # llm-server`); EXEC is explicitly denied (no shelling into any
+    # container -- the single most dangerous capability docker.sock
+    # otherwise grants), along with volumes/secrets/swarm/plugins/etc. This
+    # is the actual mechanism for narrowing docker.sock access -- the
+    # socket itself has no per-verb ACL, so a Linux group/user can't do
+    # this; access is all-or-nothing at that layer. See README.md
+    # "Admin panel".
+    image: tecnativa/docker-socket-proxy@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    networks:
+      - local-llm-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Allowed -- the minimum needed for `docker compose up -d llm-server`
+      # and detect-hardware.sh's `docker info` nvidia-toolkit check.
+      # VOLUMES=1 confirmed required empirically (2026-07-27): even though
+      # llm-server uses no named volumes, `compose up` still calls GET
+      # /volumes?filters=... as part of its reconciliation and gets a 403
+      # without this, aborting the whole recreate. Read-only in effect for
+      # this flow either way (nothing here ever creates/removes a volume).
+      - CONTAINERS=1
+      - POST=1
+      - ALLOW_START=1
+      - ALLOW_STOP=1
+      - ALLOW_RESTARTS=1
+      - NETWORKS=1
+      - IMAGES=1
+      - INFO=1
+      - VOLUMES=1
+      # Explicitly denied -- the actual point of this service. EXEC in
+      # particular: without this proxy, docker.sock RW access implicitly
+      # allows exec into ANY container on the host, which is full root
+      # regardless of which OS user holds that access.
+      - EXEC=0
+      - SECRETS=0
+      - AUTH=0
+      - SERVICES=0
+      - TASKS=0
+      - NODES=0
+      - PLUGINS=0
+      - SWARM=0
+      - SESSION=0
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - GRPC=0
+      - SYSTEM=0
+      - ALLOW_PAUSE=0
+      - ALLOW_UNPAUSE=0
+    # No host port -- internal only, reachable by container name on
+    # local-llm-net (default listen port 2375).
+
+networks:
+  local-llm-net:
+    external: true

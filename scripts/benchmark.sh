@@ -39,7 +39,11 @@ ITERATIONS="${1:-3}"
 OUTPUT_FILE="${2:-$SCRIPT_DIR/../benchmarks/benchmark_results.json}"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 CONTEXT_DEPTH="${3:-0}"
-SERVER_URL="http://localhost:8080"
+# Overridable so the admin panel (which runs this inside a container, where
+# "localhost" isn't the host and llm-server's loopback-only port isn't
+# reachable) can point it at http://llm-server:8080 on the shared docker
+# network instead. Humans running this from the host CLI get the default.
+SERVER_URL="${SERVER_URL:-http://localhost:8080}"
 MODEL_NAME="${MODEL_NAME:-local-model}"
 SCRIPT_VERSION="3.0.0"
 

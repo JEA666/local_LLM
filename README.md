@@ -1,4 +1,4 @@
-# local-llm
+# local_LLM
 
 A self-hostable, private local LLM stack: [`llama.cpp`](https://github.com/ggml-org/llama.cpp) serving a GGUF model, an [OpenWebUI](https://github.com/open-webui/open-webui) chat interface, [SearXNG](https://github.com/searxng/searxng) for anonymous web search, a [Dashy](https://dashy.to) portal, and [Caddy](https://caddyserver.com) terminating HTTPS for all of it. Runs entirely in Docker — no data leaves the machine, no cloud dependency, no API costs.
 
@@ -16,8 +16,9 @@ Generic and portable — no assumed hardware, model, or domain. See [`prompt.md`
 
 | Directory | Contents |
 |---|---|
-| `deployments/` | `compose.yml` — the whole stack, parameterized via `.env` |
+| `deployments/` | `compose.yml` — the whole stack, parameterized via `.env`. `compose.monitoring.yml` and `compose.admin.yml` are optional add-ons |
 | `scripts/` | Entrypoints and utilities (`stack-up.sh`, `generate-local-ca.sh`, `benchmark.sh`, `detect-hardware.sh`, ...) |
+| `admin/` | Optional admin panel — Go source + Dockerfile, see "Admin panel" below |
 | `docs/` | API reference |
 | `portal/`, `searxng/`, `certs/`, `models/`, `openwebui-data/`, `benchmarks/` | Per-service config/data. `.example` templates are tracked; real generated files are git-ignored |
 
@@ -38,7 +39,7 @@ cp .env.example .env
 
 ## Architecture
 
-Five services on one Docker network. Caddy is the sole entry point — path-routed under `:443` (`/` Dashy, `/search` SearXNG, `/llm` the API, `/obs` Grafana if monitoring is enabled), except OpenWebUI which keeps its own port (`:3000`) since its frontend doesn't support subpath routing. `llm-server` (llama.cpp, chosen over vLLM for finer VRAM control) additionally exposes `127.0.0.1:8080` for local benchmarking only — unreachable from the LAN.
+Five services on one Docker network. Caddy is the sole entry point — path-routed under `:443` (`/` Dashy, `/search` SearXNG, `/llm` the API, `/obs` Grafana if monitoring is enabled, `/admin` the admin panel if enabled), except OpenWebUI which keeps its own port (`:3000`) since its frontend doesn't support subpath routing. `llm-server` (llama.cpp, chosen over vLLM for finer VRAM control) additionally exposes `127.0.0.1:8080` for local benchmarking only — unreachable from the LAN.
 
 See [`prompt.md`](prompt.md)'s environment diagram (`portal/docs/environment.html`) for the full picture.
 
@@ -91,6 +92,18 @@ docker compose -f deployments/compose.yml -f deployments/compose.monitoring.yml 
 Open `https://<your-domain>/obs/` (default login `admin`/`admin` — change `GRAFANA_ADMIN_PASSWORD` before exposing this beyond localhost). Five dashboards ship out of the box: **System Overview** (start here — Golden Signals + RED + USE at a glance), plus per-source LLM Server, Caddy, Node Exporter, and cAdvisor dashboards.
 
 cAdvisor needs read-only `docker.sock` access to introspect containers, and a `fs.inotify.max_user_instances` of at least a few thousand — raise it with `echo 'fs.inotify.max_user_instances=4096' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system` if it crash-loops on startup.
+
+## Admin panel
+
+Optional — a small Go web app to switch the active model and trigger `detect-hardware.sh`/`benchmark.sh` from a browser instead of the CLI:
+
+```bash
+docker compose -f deployments/compose.yml -f deployments/compose.admin.yml up -d
+```
+
+Open `https://<your-domain>/admin/` — gated by Caddy `basic_auth`, not by the app itself. Before bringing it up, set in `.env`: `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` (hash with `docker run --rm caddy:2.9.1-alpine caddy hash-password --plaintext 'your-password'`, doubling every `$` in the result before pasting it in), and `HOST_REPO_DIR` — this repo's absolute path on the host, required because the app drives `docker compose` from inside its own container, and bind-mount paths must resolve against the real host filesystem, not the container's own view of it.
+
+**Docker access is scoped, not raw**: the `admin` container itself has **no access to `docker.sock`**. A dedicated `docker-socket-proxy` service holds the only (read-only) mount of the real socket and exposes a restricted, allowlisted subset of the Docker API over the network instead — containers/images/networks/volumes and start/stop/restart are allowed (what `docker compose up -d llm-server` needs, including its reconciliation step that lists volumes even though none are used); `exec` into any container, secrets, and everything Swarm-related are explicitly denied. This matters because `docker.sock` has no per-verb permissions of its own — any process that can write to it can ask the daemon to do anything (including mount `/` into a new privileged container), so a Linux group/user can't scope it down; an API-level allowlist proxy is the only real mechanism. Chosen over Portainer as deliberately narrower: one page, one purpose, no general-purpose container management surface. See the diagram at `/docs/environment.html` for exactly what's allowed/denied.
 
 ## OpenCode setup
 

@@ -1,5 +1,5 @@
 pageInfo:
-  title: local-llm
+  title: local_LLM
   description: Local LLM portal
 
 appConfig:
@@ -64,3 +64,10 @@ sections:
         description: Full dashboard list, editing, datasources, admin
         url: https://DOMAIN_PLACEHOLDER/obs/
         icon: fas fa-chart-line
+      # Optional -- only reachable if deployments/compose.admin.yml is also
+      # up. Password-protected via Caddy basic_auth -- see README.md
+      # "Admin panel". Switch models, run hardware scan / benchmark.
+      - title: Admin Panel
+        description: Switch models, hardware scan, benchmark
+        url: https://DOMAIN_PLACEHOLDER/admin/
+        icon: fas fa-sliders-h

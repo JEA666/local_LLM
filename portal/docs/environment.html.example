@@ -193,6 +193,7 @@
   .group-llm .group-label { color: var(--zone-services); }
   .group-obs .group-label { color: var(--zone-monitor); }
   .group-back .group-label { color: var(--zone-back); }
+  .group-admin .group-label { color: var(--zone-admin); }
 
   .group-back {
     border-style: solid;
@@ -209,7 +210,7 @@
     justify-content: center;
   }
 
-  .obs-column {
+  .obs-column, .admin-column {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -220,9 +221,9 @@
 
   .group-llm { flex-shrink: 0; }
 
-  .obs-column .group-box { width: 100%; }
+  .obs-column .group-box, .admin-column .group-box { width: 100%; }
 
-  .obs-connector {
+  .obs-connector, .admin-connector {
     width: 1px;
     height: 1.4rem;
     background: var(--line-strong);
@@ -314,11 +315,27 @@
   .service-card.monitor { border-top-color: var(--zone-monitor); }
   .service-card.monitor .port { color: var(--zone-monitor); }
 
+  .admin-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--zone-admin);
+    background: var(--zone-admin-soft);
+    border-radius: 3px;
+    padding: 0.08rem 0.4rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .service-card.admin { border-top-color: var(--zone-admin); }
+  .service-card.admin .port { color: var(--zone-admin); }
+
   /* ---- lower panels ---- */
 
   .panels {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1.5rem;
     margin-bottom: 1rem;
   }
@@ -451,6 +468,7 @@
   .swatch.svc { background: var(--zone-services); }
   .swatch.mon { background: var(--zone-monitor); }
   .swatch.back { background: var(--zone-back); }
+  .swatch.admin { background: var(--zone-admin); }
 </style>
 </head>
 <body>
@@ -564,6 +582,31 @@
           </div>
         </div>
       </div>
+
+      <div class="admin-column">
+        <div class="group-box group-admin">
+          <span class="group-label">Admin</span>
+          <div class="group-cards">
+            <div class="service-card admin">
+              <span class="admin-tag">optional</span>
+              <div class="name">admin</div>
+              <div class="port">/admin</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-connector"></div>
+
+        <div class="group-box group-back">
+          <span class="group-label">Back end</span>
+          <div class="group-cards">
+            <div class="back-card">
+              <div class="name">docker-socket-proxy</div>
+              <div class="port">:2375</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="legend">
@@ -571,6 +614,7 @@
       <div class="item"><span class="swatch svc"></span> LLM stack</div>
       <div class="item"><span class="swatch mon"></span> Obs stack (optional)</div>
       <div class="item"><span class="swatch back"></span> Back end</div>
+      <div class="item"><span class="swatch admin"></span> Admin (optional)</div>
     </div>
     <p class="diagram-note">Path-routed under Caddy's single <code>:443</code>, except OpenWebUI (own port -- no subpath support in its SvelteKit build). Back end services never go through Caddy either way -- prometheus/cadvisor/gpu-exporter are internal-only (no published port), but node-exporter runs on the host's own network (<code>network_mode: host</code>) for accurate host-level stats, so it's reachable directly on the host, not internal-only like the other three.</p>
   </div>
@@ -594,6 +638,12 @@
           <span class="who">SearXNG</span>
           <span class="why">web search</span>
         </div>
+        <div class="call">
+          <span class="who">admin</span>
+          <span class="arrow">→</span>
+          <span class="who">llm-server</span>
+          <span class="why">benchmark</span>
+        </div>
       </div>
       <div class="exception-note">
         Only Caddy publishes ports to the host.
@@ -613,7 +663,29 @@
         <div class="scrape"><span class="src">grafana</span><span class="note">queries prometheus</span></div>
       </div>
       <div class="exception-note">
-        <strong>cadvisor</strong>: only exception to "no docker.sock", read-only.
+        <strong>cadvisor</strong>: direct read-only docker.sock mount, for container introspection only.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Admin panel</h2>
+      <p class="panel-sub"><code>compose.admin.yml</code></p>
+      <div class="call-list">
+        <div class="call">
+          <span class="who">admin</span>
+          <span class="arrow">→</span>
+          <span class="who">docker-socket-proxy</span>
+          <span class="why">model switch</span>
+        </div>
+        <div class="call">
+          <span class="who">docker-socket-proxy</span>
+          <span class="arrow">→</span>
+          <span class="who">Docker daemon</span>
+          <span class="why">allowlisted API</span>
+        </div>
+      </div>
+      <div class="exception-note">
+        <strong>docker-socket-proxy</strong>: the only container with the real docker.sock mounted (read-only) for this flow. Allows containers/images/networks/volumes + start/stop/restart (needed for <code>docker compose up -d llm-server</code>, which lists volumes as part of its reconciliation even when none are used); denies exec, secrets, swarm, and everything else. <code>admin</code> itself has no docker.sock access at all -- docker.sock has no per-verb ACL of its own, so this proxy is the actual mechanism for narrowing it, not an OS user/group.
       </div>
     </div>
   </div>

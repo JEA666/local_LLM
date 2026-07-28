@@ -105,9 +105,12 @@ services:
       start_period: 15s
 
   openwebui:
-    # Pinned from ghcr.io/open-webui/open-webui:main (2026-07-23) -- `main`
-    # was a moving branch tag, worse than `latest`. See fmt/docker/dockerfile.md.
-    image: ghcr.io/open-webui/open-webui@sha256:a26effeb220e132482bf7e0560b3404843e7bc40d23051144e062960df8df6b0
+    # Pinned from ghcr.io/open-webui/open-webui:v0.11.0 (2026-07-27) -- a
+    # real version tag now that one exists, not the `main` branch tag this
+    # was pinned from originally. Bump deliberately: re-pull the tag,
+    # re-pin the new digest, note it here. v0.11.0 includes a DB schema
+    # migration -- back up openwebui-data/ before bumping this again.
+    image: ghcr.io/open-webui/open-webui@sha256:72c0ba641ba75e7aa52655cb242570906ececd09b1140fb736483038a22b3228
     container_name: openwebui
     restart: unless-stopped
     networks:
@@ -130,11 +133,48 @@ services:
       - OPENAI_API_KEY=sk-local
       - ENABLE_WEB_SEARCH=True
       - WEB_SEARCH_ENGINE=searxng
-      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
-      - WEB_SEARCH_RESULT_COUNT=3
+      # Goes through Caddy's public route, NOT directly to searxng:8080.
+      # SearXNG's server.base_url (searxng/settings.yml) makes its
+      # ReverseProxyPathFix middleware unconditionally force every request's
+      # Host/scheme to base_url's, regardless of how the request actually
+      # arrived -- so a direct container-to-container call gets a 308
+      # redirect to this exact public URL either way (confirmed via
+      # searx/flaskfix.py's source and a live request trace, 2026-07-27).
+      # Going through Caddy directly avoids that pointless redirect hop,
+      # and matches what the URL will be rewritten to anyway.
+      - SEARXNG_QUERY_URL=https://${DOMAIN}/search/search?q=<query>
+      # Defaults (3/3) turned out too narrow for anything beyond a single
+      # fact lookup -- confirmed live (2026-07-27): a request to compare
+      # prices across ~5 different stores structurally can't work when
+      # only 3 pages ever get fetched and only 3 chunks ever reach the
+      # model's context (frequently all from the same one page). First
+      # raised to 8/10 -- still too narrow. Checked SearXNG directly for a
+      # real query: 75 raw hits, 21 unique domains, ~19 genuinely relevant
+      # Norwegian retailers -- raised to 20 to actually capture that real
+      # pool instead of discarding most of it.
+      - WEB_SEARCH_RESULT_COUNT=20
       - WEB_SEARCH_CONCURRENT_REQUESTS=5
+      - RAG_TOP_K=20
+      - RAG_TOP_K_RERANKER=20
+      # Default chunk_size=1000 splits dense e-commerce listing pages
+      # (many small product+price blocks) into many near-identical tiny
+      # chunks, none individually distinctive enough to rank in the top-K
+      # for a broad query -- confirmed live (2026-07-27): a page with real
+      # embedded prices (verified via direct fetch) still didn't surface
+      # them until chunks were widened enough to keep a product block and
+      # its price together.
+      - CHUNK_SIZE=3000
+      - CHUNK_OVERLAP=300
+      # Needed because of the above: this is our own private CA (see
+      # scripts/generate-local-ca.sh), which OpenWebUI's Python/aiohttp
+      # client doesn't trust by default -- SSL_CERT_FILE is a standard
+      # OpenSSL/Python env var that ssl.create_default_context() (what
+      # aiohttp's default connector uses) honors as an additional trust
+      # source.
+      - SSL_CERT_FILE=/certs/ca.crt
     volumes:
       - ./openwebui-data:/app/backend/data
+      - ./certs/ca.crt:/certs/ca.crt:ro
     # No host ports -- see the note on llm-server above.
 
   dashy:
@@ -177,6 +217,14 @@ services:
         condition: service_healthy
       dashy:
         condition: service_started
+    # Only used by the /admin/* basic_auth block in certs/Caddyfile --
+    # harmless if compose.admin.yml is never brought up, the route just
+    # never gets hit. Caddy does its own {$VAR} substitution at runtime
+    # from its process environment, separate from docker compose's
+    # ${VAR} substitution of the Caddyfile bind-mount path itself.
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
     # Filenames are fixed regardless of your domain -- generate-local-ca.sh
     # always writes server.crt/server.key; only the Caddyfile's site
     # addresses (and the cert's SAN) encode your actual domain.

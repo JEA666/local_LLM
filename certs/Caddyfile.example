@@ -33,6 +33,20 @@ DOMAIN_PLACEHOLDER:443 {
 		reverse_proxy llm-server:8080
 	}
 
+	# Optional: only reachable if deployments/compose.admin.yml is up.
+	# The admin app's own routes (/, /switch-model, ...) have no prefix
+	# awareness either, so strip it here, same as llm-server above.
+	# basic_auth is the only access control this service has -- see
+	# README.md "Admin panel" for the docker.sock read-write exception this
+	# gates. Password hash comes from ADMIN_PASSWORD_HASH in .env, generated
+	# via `caddy hash-password`; never a plaintext value in this file.
+	handle_path /admin/* {
+		basic_auth {
+			{$ADMIN_USERNAME:admin} {$ADMIN_PASSWORD_HASH}
+		}
+		reverse_proxy admin:8080
+	}
+
 	# Catch-all: Dashy, the portal. Also serves portal/docs/*.html and
 	# certs/ca.crt as static files from its own public dir (bind-mounted in
 	# compose.yml) -- unaffected by the routes above.

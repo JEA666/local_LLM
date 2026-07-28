@@ -14,6 +14,8 @@
   --zone-monitor-soft: #dae8dd;
   --zone-back: #6a5a8c;
   --zone-back-soft: #e2dcee;
+  --zone-admin: #8a7028;
+  --zone-admin-soft: #ece3c5;
   --zone-danger: #a8342a;
   --zone-danger-soft: #f2d8d4;
   --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 8px 24px -12px rgba(30, 25, 15, 0.18);
@@ -38,6 +40,8 @@
     --zone-monitor-soft: #22322a;
     --zone-back: #ab98d4;
     --zone-back-soft: #2c2740;
+    --zone-admin: #c9ac5c;
+    --zone-admin-soft: #332c1c;
     --zone-danger: #e46a5c;
     --zone-danger-soft: #3d211c;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -12px rgba(0, 0, 0, 0.5);
@@ -60,6 +64,8 @@
   --zone-monitor-soft: #22322a;
   --zone-back: #ab98d4;
   --zone-back-soft: #2c2740;
+  --zone-admin: #c9ac5c;
+  --zone-admin-soft: #332c1c;
   --zone-danger: #e46a5c;
   --zone-danger-soft: #3d211c;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -12px rgba(0, 0, 0, 0.5);
@@ -81,6 +87,8 @@
   --zone-monitor-soft: #dae8dd;
   --zone-back: #6a5a8c;
   --zone-back-soft: #e2dcee;
+  --zone-admin: #8a7028;
+  --zone-admin-soft: #ece3c5;
   --zone-danger: #a8342a;
   --zone-danger-soft: #f2d8d4;
   --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 8px 24px -12px rgba(30, 25, 15, 0.18);

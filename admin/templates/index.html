@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — local_LLM</title>
+<!-- Caddy's handle_path strips /admin before forwarding here, so this app
+     itself is unaware of the prefix -- but the BROWSER resolves form
+     actions against the real site, not the stripped path it sees. An
+     absolute action like "/switch-model" would post to the site root
+     (falling through to Dashy's catch-all, 404) instead of "/admin/...".
+     This <base> pins relative resolution to /admin/ regardless of which
+     sub-path the last POST response happened to land on. -->
+<base href="/admin/">
+<style>
+  :root {
+    --bg: #f3f1ec;
+    --surface: #ffffff;
+    --surface-2: #ece8de;
+    --line: #cdc6b4;
+    --text: #211f1a;
+    --text-muted: #6b6555;
+    --accent: #b5652a;
+    --accent-soft: #e4c19f;
+    --zone-danger: #a8342a;
+    --zone-danger-soft: #f2d8d4;
+    --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 8px 24px -12px rgba(30, 25, 15, 0.18);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161b; --surface: #1c1f26; --surface-2: #242832; --line: #383c46;
+      --text: #ece8e0; --text-muted: #9c978a; --accent: #e0975a; --accent-soft: #4a3624;
+      --zone-danger: #e46a5c; --zone-danger-soft: #3d211c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -12px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161b; --surface: #1c1f26; --surface-2: #242832; --line: #383c46;
+    --text: #ece8e0; --text-muted: #9c978a; --accent: #e0975a; --accent-soft: #4a3624;
+    --zone-danger: #e46a5c; --zone-danger-soft: #3d211c;
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f1ec; --surface: #ffffff; --surface-2: #ece8de; --line: #cdc6b4;
+    --text: #211f1a; --text-muted: #6b6555; --accent: #b5652a; --accent-soft: #e4c19f;
+    --zone-danger: #a8342a; --zone-danger-soft: #f2d8d4;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .page { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.3rem; }
+  .sub { font-family: var(--mono); font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2rem; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1.3rem 1.4rem 1.5rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
+  }
+  .panel h2 { font-size: 1rem; margin: 0 0 0.9rem; }
+  .panel .desc { font-size: 0.82rem; color: var(--text-muted); margin: -0.5rem 0 1rem; }
+
+  label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+  select {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin-bottom: 0.9rem;
+  }
+  button {
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+
+  .current {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.9rem;
+  }
+  .current code { color: var(--accent); }
+
+  .message {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    font-size: 0.88rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .output {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 420px;
+    overflow-y: auto;
+    margin-bottom: 1.5rem;
+  }
+
+  .danger-note {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    border-top: 1px dashed var(--line);
+    padding-top: 1rem;
+    margin-top: 2rem;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Admin Panel</h1>
+  <div class="sub">local_LLM — model switching, hardware scan, benchmark</div>
+
+  {{if .Message}}<div class="message">{{.Message}}</div>{{end}}
+  {{if .Output}}<div class="output">{{.Output}}</div>{{end}}
+
+  <div class="panel">
+    <h2>Switch model</h2>
+    <div class="current">Current: <code>{{.CurrentFile}}</code></div>
+    <form method="post" action="switch-model">
+      <label for="model">Model file (from models/)</label>
+      <select name="model" id="model">
+        {{range .Models}}<option value="{{.}}"{{if eq . $.CurrentFile}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      <button type="submit">Switch and restart llm-server</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Hardware scan</h2>
+    <p class="desc">Runs scripts/detect-hardware.sh, updates portal/docs/hardware.html.</p>
+    <form method="post" action="hardware-scan">
+      <button type="submit">Run scan</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Benchmark</h2>
+    <p class="desc">Runs scripts/benchmark.sh against the running llm-server.</p>
+    <form method="post" action="benchmark">
+      <label for="iterations">Iterations</label>
+      <select name="iterations" id="iterations">
+        <option value="1">1 (quick)</option>
+        <option value="3" selected>3</option>
+        <option value="5">5</option>
+      </select>
+      <button type="submit">Run benchmark</button>
+    </form>
+  </div>
+
+  <p class="danger-note">This panel can recreate containers via <code>docker.sock</code> (read-write) — a deliberate, narrow exception for this project, documented in README.md. Treat the password like root on this box.</p>
+</div>
+</body>
+</html>
