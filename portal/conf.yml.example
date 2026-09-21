@@ -38,6 +38,11 @@ sections:
         description: Project overview, API reference, architecture diagram
         url: https://DOMAIN_PLACEHOLDER/docs/index.html
         icon: fas fa-book
+      - title: Drone Guide
+        description: Build, simulate, and program your own FPV drone
+        # Deliberately NOT /index.html -- see the matching note in conf.yml.
+        url: https://DOMAIN_PLACEHOLDER/drone-guide/
+        icon: fas fa-helicopter
 
   - name: Observability
     icon: fas fa-chart-line

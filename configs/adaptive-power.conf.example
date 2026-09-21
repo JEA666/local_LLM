@@ -1,0 +1,74 @@
+# adaptive-power.conf — Configuration for scripts/adaptive-power.sh
+#
+# cp configs/adaptive-power.conf.example configs/adaptive-power.conf, then
+# replace the hardware-specific values below with your own -- they're kept
+# here as a WORKED EXAMPLE (one real machine's measured numbers: RTX 3080
+# 10GB, Core Ultra 7 265KF, 20 logical cores), not defaults meant to be run
+# as-is on different hardware.
+
+# --- Timing (seconds) ---
+# Event-driven for llm-server's own log lines (instant reaction), plus a
+# periodic fallback poll for GPU activity from anything else (an unrelated
+# GPU job leaves llm-server's log silent -- see adaptive-power.sh's header
+# for why that needs its own signal). COOLDOWN_TIME: how long to wait with
+# no activity from EITHER signal before dropping back to idle (avoids
+# flapping between quick back-to-back requests, or between two heavy-job
+# samples that straddle a poll). Generic default, no tuning needed.
+COOLDOWN_TIME=120      # 2 min: grace period after last activity before idle
+
+# How often to check for GPU load from something other than llm-server
+# (also the read timeout for the llm-server log tail, so this bounds how
+# fast a non-LLM job gets noticed -- lower = more responsive, more nvidia-smi
+# calls). Generic default.
+GENERAL_POLL_INTERVAL=15
+
+# GPU utilization % above which "something is using the GPU" is treated as
+# real activity even though llm-server's log is silent. Set well above
+# idle-desktop noise (e.g. a remote-desktop session's compositor) but well
+# below what any real sustained compute job (rendering, photogrammetry,
+# sim) produces. Generic default -- raise it if something on your desktop
+# idles above 15% util and falsely keeps the system boosted.
+GENERAL_GPU_UTIL_THRESHOLD=15
+
+# --- GPU clock settings (WORKED EXAMPLE -- replace for your GPU) ---
+# Locking the clock contributed little on its own on this GPU (~1% delta,
+# within noise) compared to the CPU governor fix below, which was the real
+# lever. Left in since it's cheap and harmless, but don't assume the same
+# ratio holds on different hardware -- if in doubt, set MIN/MAX to your
+# card's boost clock (nvidia-smi --query-gpu=clocks.max.graphics
+# --format=csv) or leave both at 0 to skip the lock entirely (see
+# adaptive-power.sh: `nvidia-smi -lgc 0,0` is a no-op lock, harmless).
+GPU_CLOCK_MIN=1800
+GPU_CLOCK_MAX=1800
+
+# --- Power limits in watts (WORKED EXAMPLE -- replace for your GPU) ---
+# Do not copy these two numbers to different hardware -- they are only
+# valid for the RTX 3080 10GB this example was measured on, and were
+# derived, not guessed: POWER_LIMIT_ACTIVE is this GPU's default/stock
+# power limit (`nvidia-smi -q -d POWER | grep "Default Power Limit"`),
+# POWER_LIMIT_IDLE is the floor found by running scripts/power-cap-sweep.sh
+# and keeping headroom above the reported floor (don't run right at the
+# floor found there -- that's the point where throughput just starts to
+# drop, not a safe cruising value). Run power-cap-sweep.sh yourself and use
+# ITS numbers for your card.
+POWER_LIMIT_ACTIVE=370
+POWER_LIMIT_IDLE=340
+
+# --- CPU frequency limits in kHz (WORKED EXAMPLE -- replace for your CPU) ---
+# Governor is set on ALL cores, not just whichever ones LLM_CPUSET pins
+# inference to -- on this (hybrid P-core/E-core) chip, uncore/package clock
+# scales with whole-package activity, so leaving other cores in powersave
+# throttled the shared uncore domain even though the pinned cores
+# individually still hit full clock. Confirmed with a real before/after
+# measurement (13.37 -> 44.28 tok/s from this alone, all else unchanged) --
+# don't skip it as a maybe-doesn't-matter step even on a uniform-core CPU;
+# re-measure for your own chip if you change this.
+CPU_MAX_FREQ_IDLE=2000000     # 2000 MHz — quiet, low heat
+CPU_MAX_FREQ_ACTIVE=0         # 0 = unlimited (allow full boost)
+
+# --- Logging ---
+# Absolute path required -- this daemon runs as a systemd service (root),
+# not from your shell, so it has no notion of "this repo" to resolve a
+# relative path against. Point it at your own clone.
+LOG_FILE="/path/to/local_LLM/scripts/adaptive-power.log"
+LOG_MAX_SIZE=10485760  # 10MB, rotate after this

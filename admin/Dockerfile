@@ -24,9 +24,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
+# Non-root -- see fmt/docker/dockerfile.md's Go-binary pattern. Docker
+# access goes through docker-socket-proxy over the network (DOCKER_HOST),
+# not a mounted docker.sock, so root was never actually needed here. UID
+# 1000 matches the typical first host user so writes through the /repo
+# bind mount (e.g. portal/docs/hardware.html from detect-hardware.sh) keep
+# working without a permission mismatch -- if your host user has a
+# different UID, set ADMIN_UID in .env (see .env.example; wired through by
+# compose.admin.yml's build.args) and rebuild.
+ARG UID=1000
+RUN addgroup --gid "$UID" app && adduser --uid "$UID" --gid "$UID" --system --no-create-home app
+
 WORKDIR /app
 COPY --from=build /admin ./admin
 COPY templates ./templates
+RUN chown -R app:app /app
 
+USER app
 EXPOSE 8080
 ENTRYPOINT ["/app/admin"]

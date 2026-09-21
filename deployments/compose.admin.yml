@@ -9,6 +9,13 @@ services:
     # volume below is .:/repo, not ../admin / ..:/repo.
     build:
       context: ./admin
+      # UID must match your host user's, or writes through the /repo bind
+      # mount below (e.g. portal/docs/hardware.html from detect-hardware.sh)
+      # fail with a permission error -- see admin/Dockerfile and ADMIN_UID
+      # in .env.example. Defaults to 1000 (the typical first host user) if
+      # ADMIN_UID isn't set.
+      args:
+        UID: ${ADMIN_UID:-1000}
     container_name: admin
     restart: unless-stopped
     networks:
@@ -29,6 +36,12 @@ services:
       # `docker` CLI honors DOCKER_HOST from its process environment
       # automatically, no code change needed for this to take effect.
       - DOCKER_HOST=tcp://docker-socket-proxy:2375
+      # Lets admin call OpenWebUI's own API directly over local-llm-net
+      # after a model switch, to set function_calling=legacy for the new
+      # model automatically -- same account scripts/bootstrap-openwebui.sh
+      # already uses. See .env.example.
+      - OPENWEBUI_ADMIN_EMAIL=${OPENWEBUI_ADMIN_EMAIL:-admin@localhost}
+      - OPENWEBUI_ADMIN_PASSWORD=${OPENWEBUI_ADMIN_PASSWORD:?Set OPENWEBUI_ADMIN_PASSWORD in .env -- see .env.example}
     volumes:
       # Repo root, read-write -- needed to rewrite .env (model switching)
       # and to read models/*.gguf, scripts/*.sh, portal/docs/hardware.html.
@@ -85,27 +98,14 @@ services:
       - IMAGES=1
       - INFO=1
       - VOLUMES=1
-      # Explicitly denied -- the actual point of this service. EXEC in
-      # particular: without this proxy, docker.sock RW access implicitly
-      # allows exec into ANY container on the host, which is full root
-      # regardless of which OS user holds that access.
-      - EXEC=0
-      - SECRETS=0
-      - AUTH=0
-      - SERVICES=0
-      - TASKS=0
-      - NODES=0
-      - PLUGINS=0
-      - SWARM=0
-      - SESSION=0
-      - BUILD=0
-      - COMMIT=0
-      - CONFIGS=0
-      - DISTRIBUTION=0
-      - GRPC=0
-      - SYSTEM=0
-      - ALLOW_PAUSE=0
-      - ALLOW_UNPAUSE=0
+      # Everything else (EXEC, SECRETS, AUTH, SERVICES, TASKS, NODES,
+      # PLUGINS, SWARM, SESSION, BUILD, COMMIT, CONFIGS, DISTRIBUTION,
+      # GRPC, SYSTEM, ALLOW_PAUSE, ALLOW_UNPAUSE, ...) is already off by
+      # tecnativa/docker-socket-proxy's own documented default -- not
+      # restated here. EXEC in particular is the one that matters most:
+      # without this proxy, docker.sock RW access implicitly allows exec
+      # into ANY container on the host, which is full root regardless of
+      # which OS user holds that access.
     # No host port -- internal only, reachable by container name on
     # local-llm-net (default listen port 2375).
 

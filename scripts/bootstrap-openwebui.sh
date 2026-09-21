@@ -24,6 +24,7 @@ fi
 DOMAIN="${DOMAIN:-localhost}"
 MODEL_FILE="${MODEL_FILE:?Set MODEL_FILE in .env -- see .env.example}"
 SEARXNG_LANGUAGE="${SEARXNG_LANGUAGE:-all}"
+OPENWEBUI_ADMIN_EMAIL="${OPENWEBUI_ADMIN_EMAIL:-admin@localhost}"
 
 fix_searxng_url() {
   echo "=== Fixing SearXNG query URL (PersistentConfig, env var only seeds fresh DB) ==="
@@ -69,6 +70,11 @@ PYEOF
 
 fix_search_query_language() {
   echo "=== Fixing search-query generation to keep the user's own language (PersistentConfig) ==="
+  # deployments/compose.yml seeds this correctly via QUERY_GENERATION_PROMPT_
+  # TEMPLATE/SEARXNG_LANGUAGE now (same content as below) -- this function is
+  # the drift-repair path for a DB that already exists with the old/default
+  # values, per this file's header comment, not the primary seed anymore.
+  #
   # OpenWebUI's own default query-generation prompt (used to turn a chat
   # message into 1-3 search queries) says "in the given language" but is
   # itself entirely in English -- observed live (2026-07-27) that Qwen3
@@ -159,6 +165,10 @@ PYEOF
 
 fix_rag_template_denial() {
   echo "=== Fixing RAG template so the model stops denying it can search (PersistentConfig) ==="
+  # deployments/compose.yml seeds this correctly via RAG_TEMPLATE now (same
+  # content as below) -- this function is the drift-repair path for a DB
+  # that already exists with the old/default value, not the primary seed.
+  #
   # Observed live (2026-07-27): a fresh web search genuinely ran (confirmed
   # via openwebui logs -- real pages fetched, real chunks embedded) but the
   # model still replied "jeg kan ikke utfore nye websok" (I cannot perform
@@ -230,11 +240,18 @@ set_function_calling_legacy() {
   # instead, which isn't wired up by default, so search silently no-ops.
   # Uses OpenWebUI's own API (not a raw SQL insert) so the row gets the
   # exact shape the app expects.
+  #
+  # TWO INDEPENDENT IMPLEMENTATIONS OF THE SAME API CONTRACT, NOT ONE SHARED
+  # ONE: admin/main.go's syncOpenWebUIModel hits the same endpoints
+  # (/auths/signin, /models/create, /models/model/update) with the same body
+  # shape, including the same access_grants:[] workaround. Nothing enforces
+  # they stay identical -- if OpenWebUI's API contract ever changes, update
+  # BOTH places or they'll silently disagree.
   local model_id="/models/$MODEL_FILE"
   local token
   token=$(curl -sk -X POST "https://$DOMAIN:3000/api/v1/auths/signin" \
     -H "Content-Type: application/json" \
-    -d "{\"email\":\"admin@localhost\",\"password\":\"$password\"}" \
+    -d "{\"email\":\"$OPENWEBUI_ADMIN_EMAIL\",\"password\":\"$password\"}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
   local body
   body=$(python3 -c "
@@ -267,18 +284,19 @@ print(json.dumps({
 
 set_admin_password() {
   local password="$1"
-  echo "=== Setting admin@localhost password ==="
-  docker exec -i -e BOOTSTRAP_PW="$password" openwebui python3 <<'PYEOF'
+  echo "=== Setting $OPENWEBUI_ADMIN_EMAIL password ==="
+  docker exec -i -e BOOTSTRAP_PW="$password" -e BOOTSTRAP_EMAIL="$OPENWEBUI_ADMIN_EMAIL" openwebui python3 <<'PYEOF'
 import os
 import bcrypt
 import sqlite3
 pw = os.environ['BOOTSTRAP_PW']
+email = os.environ['BOOTSTRAP_EMAIL']
 h = bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 conn = sqlite3.connect('/app/backend/data/webui.db')
 cur = conn.cursor()
-cur.execute("UPDATE auth SET password = ? WHERE email = 'admin@localhost'", (h,))
+cur.execute("UPDATE auth SET password = ? WHERE email = ?", (h, email))
 conn.commit()
-print('admin@localhost password set')
+print(f'{email} password set')
 PYEOF
 }
 

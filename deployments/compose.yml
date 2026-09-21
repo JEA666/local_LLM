@@ -61,6 +61,15 @@ services:
       - q8_0
       - --cache-type-v
       - q8_0
+      # RAM-side prompt cache (stores past prompts' KV state for reuse on
+      # similar-prefix requests). Default 8192MiB was thrashing under
+      # normal load on this box -- Ultron is a daily-use workstation
+      # (browser, IDEs, a local k8s control plane, several opencode/claude
+      # sessions), not a dedicated inference host, and llm-server's ~20GB
+      # RSS (N_CPU_MOE-offloaded expert weights) already leaves little
+      # slack. Lower cap trades some prompt-reuse speed for headroom.
+      - --cache-ram
+      - "${CACHE_RAM_MIB:-2048}"
       # Required for real tool-calling: renders the model's actual chat
       # template (via minja) and engages llama.cpp's matching tool-call
       # parser. Without this, Qwen3's <tool_call><function=...> text (its
@@ -80,6 +89,19 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    # Explicit GPU device nodes. On Docker with the systemd cgroup driver (the
+    # Ubuntu default) a running container can silently lose GPU access
+    # ("Failed to initialize NVML: Unknown Error") whenever runc rewrites its
+    # device cgroup, e.g. after `docker update` or a systemd reload. Listing the
+    # nodes here makes runc aware of them, so the access survives. See
+    # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/troubleshooting.html
+    # Multi-GPU host: add /dev/nvidia1 and so on. If a node below does not exist
+    # on your host, remove that line.
+    devices:
+      - /dev/nvidiactl
+      - /dev/nvidia0
+      - /dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools
 
   searxng:
     # Pinned from searxng/searxng:latest (2026-07-23) -- see fmt/docker/dockerfile.md.
@@ -120,19 +142,33 @@ services:
         condition: service_healthy
       searxng:
         condition: service_healthy
+    # Mapping style (not the `- KEY=value` list form used elsewhere in this
+    # file) so RAG_TEMPLATE/QUERY_GENERATION_PROMPT_TEMPLATE below can use
+    # real multi-line YAML block scalars -- can't mix both forms under one
+    # `environment:` key, so this applies to every var here, not just those
+    # two.
+    #
+    # QUOTE ANY VALUE THAT LOOKS LIKE A BOOLEAN OR NUMBER (True/False/yes/no/
+    # a bare number). The list form below was immune to this -- everything
+    # was always a string. This mapping form is real YAML: an unquoted
+    # `ENABLE_FOO: False` becomes a YAML boolean, not the string "False"
+    # OpenWebUI's own env parsing expects, and nothing here will error --
+    # it'll just silently misconfigure that one variable. Every existing
+    # boolean/numeric-looking value below is already quoted; keep that
+    # pattern for anything you add.
     environment:
-      - ENABLE_SIGNUP=False
+      ENABLE_SIGNUP: "False"
       # llm-server is now on the same docker network (local-llm-net) instead
       # of being reached via host-gateway -- simpler and one less thing that
       # breaks if the host-published port ever changes, now that llm-server
       # doesn't publish one at all.
-      - OPENAI_API_BASE_URL=http://llm-server:8080/v1
+      OPENAI_API_BASE_URL: http://llm-server:8080/v1
       # Not a real secret -- llama.cpp's server doesn't validate this value at
       # all, it's only set because OpenWebUI's OpenAI-compatible client
       # requires some non-empty API key to be configured.
-      - OPENAI_API_KEY=sk-local
-      - ENABLE_WEB_SEARCH=True
-      - WEB_SEARCH_ENGINE=searxng
+      OPENAI_API_KEY: sk-local
+      ENABLE_WEB_SEARCH: "True"
+      WEB_SEARCH_ENGINE: searxng
       # Goes through Caddy's public route, NOT directly to searxng:8080.
       # SearXNG's server.base_url (searxng/settings.yml) makes its
       # ReverseProxyPathFix middleware unconditionally force every request's
@@ -142,7 +178,13 @@ services:
       # searx/flaskfix.py's source and a live request trace, 2026-07-27).
       # Going through Caddy directly avoids that pointless redirect hop,
       # and matches what the URL will be rewritten to anyway.
-      - SEARXNG_QUERY_URL=https://${DOMAIN}/search/search?q=<query>
+      SEARXNG_QUERY_URL: https://${DOMAIN}/search/search?q=<query>
+      # ISO language code to bias SearXNG results toward (e.g. "no"), or
+      # "all" for no bias -- set SEARXNG_LANGUAGE in .env. Matters because
+      # OpenWebUI's own query-generation step can drift into English
+      # regardless of what language you're chatting in -- see
+      # QUERY_GENERATION_PROMPT_TEMPLATE below.
+      SEARXNG_LANGUAGE: ${SEARXNG_LANGUAGE:-all}
       # Defaults (3/3) turned out too narrow for anything beyond a single
       # fact lookup -- confirmed live (2026-07-27): a request to compare
       # prices across ~5 different stores structurally can't work when
@@ -152,10 +194,10 @@ services:
       # real query: 75 raw hits, 21 unique domains, ~19 genuinely relevant
       # Norwegian retailers -- raised to 20 to actually capture that real
       # pool instead of discarding most of it.
-      - WEB_SEARCH_RESULT_COUNT=20
-      - WEB_SEARCH_CONCURRENT_REQUESTS=5
-      - RAG_TOP_K=20
-      - RAG_TOP_K_RERANKER=20
+      WEB_SEARCH_RESULT_COUNT: "20"
+      WEB_SEARCH_CONCURRENT_REQUESTS: "5"
+      RAG_TOP_K: "20"
+      RAG_TOP_K_RERANKER: "20"
       # Default chunk_size=1000 splits dense e-commerce listing pages
       # (many small product+price blocks) into many near-identical tiny
       # chunks, none individually distinctive enough to rank in the top-K
@@ -163,15 +205,87 @@ services:
       # embedded prices (verified via direct fetch) still didn't surface
       # them until chunks were widened enough to keep a product block and
       # its price together.
-      - CHUNK_SIZE=3000
-      - CHUNK_OVERLAP=300
+      CHUNK_SIZE: "3000"
+      CHUNK_OVERLAP: "300"
       # Needed because of the above: this is our own private CA (see
       # scripts/generate-local-ca.sh), which OpenWebUI's Python/aiohttp
       # client doesn't trust by default -- SSL_CERT_FILE is a standard
       # OpenSSL/Python env var that ssl.create_default_context() (what
       # aiohttp's default connector uses) honors as an additional trust
       # source.
-      - SSL_CERT_FILE=/certs/ca.crt
+      SSL_CERT_FILE: /certs/ca.crt
+      # PersistentConfig only reads these two on first DB creation --
+      # scripts/bootstrap-openwebui.sh re-patches the DB directly too, for
+      # a DB that already exists with drifted/default values. Keep both in
+      # sync if you change the wording.
+      #
+      # Qwen3 was observed silently translating a Norwegian question into
+      # an English search query ("en norsk webbutikk" -> generic English),
+      # losing locale-specific intent and pulling in wrong-country results
+      # -- this makes language-preservation explicit and first.
+      QUERY_GENERATION_PROMPT_TEMPLATE: |
+        ### Task:
+        Analyze the chat history to determine the necessity of generating search queries, in the SAME language the user is writing in -- do not translate the query into English or any other language. If the user mentions a country, region, store, or brand, keep that term in the query exactly. By default, prioritize generating 1-3 broad and relevant search queries unless it is absolutely certain that no additional information is required.
+
+        ### Guidelines:
+        - Respond EXCLUSIVELY with a JSON object. Any form of extra commentary, explanation, or additional text is strictly prohibited.
+        - When generating search queries, respond in the format: { "queries": ["query1", "query2"] }, ensuring each query is distinct, concise, and relevant to the topic.
+        - If and only if it is entirely certain that no useful results can be retrieved by a search, return: { "queries": [] }.
+        - Err on the side of suggesting search queries if there is any chance they might provide useful or updated information.
+        - Today is: {{CURRENT_DATE}}.
+
+        ### Output:
+        Strictly return in JSON format:
+        {
+          "queries": ["query1", "query2"]
+        }
+
+        ### Chat History:
+        <chat_history>
+        {{MESSAGES:END:6}}
+        </chat_history>
+      # Two things observed live (2026-07-27): (1) a real search genuinely
+      # ran but the model still claimed "I cannot search the web" -- the
+      # default template calls injected content generic "provided context"
+      # with no indication it's this message's own live search result, so
+      # the model fell back on its trained denial reflex; (2) even past
+      # that, the model blended real retrieved content with remembered
+      # store names, and invented a plausible-looking-but-nonexistent
+      # domain when told to "always cite a store". This template forbids
+      # the denial outright and requires the literal source domain per
+      # claim (not a free-text company name), which makes fabricated
+      # claims checkable instead of just prohibited by instruction.
+      RAG_TEMPLATE: |
+        ### Task:
+        Respond to the user query using ONLY the provided context below, incorporating inline citations in the format [id] **only when the <source> tag includes an explicit id attribute** (e.g., <source id="1">).
+
+        ### Critical guideline:
+        The <context> below is the result of a REAL, live web search performed automatically for this exact message, just now -- it is NOT your training data and NOT a hypothetical. Never say you "cannot search the web" or "cannot fetch new information" when a <context> block is present -- that is always false when this template is in use; the search already happened.
+        Never mention a specific store, retailer, brand, product, or price that does not literally appear in the <context> below, even if you recognize the name from your own training. Do not fill gaps with remembered stores or well-known retailers -- if the context only covers 2 stores, discuss only those 2; do not pad the answer with others you merely recall. If a detail (like a price, or a 5th store) genuinely isn't present anywhere in the context, say plainly that it wasn't found in the pages retrieved -- do not substitute your own general knowledge to fill the gap, and do not suggest websites you have not actually seen search results from.
+
+        ### Source attribution (critical):
+        When stating a price, product, or claim, you MUST attribute it to the exact source it came from using its [id] citation -- never blend facts from two different sources into one attributed claim, and never state a company/store name that does not match the <source> tag's actual domain for that [id]. In any table, include a column with the literal domain (e.g. skyt.no, vapensmia.no) the row's data came from, taken directly from the <source> tag -- not a nicer-sounding company name you infer or recall. This lets the user judge the source's legitimacy themselves; do not omit, prettify, or substitute it.
+
+        ### Guidelines:
+        - If the answer is in the context, state it directly and confidently, citing the source.
+        - If uncertain, ask the user for clarification.
+        - Respond in the same language as the user's query.
+        - If the context is unreadable or of poor quality, inform the user and provide the best possible answer from what IS readable.
+        - **Only include inline citations using [id] (e.g., [1], [2]) when the <source> tag includes an id attribute.**
+        - Do not cite if the <source> tag does not contain an id attribute.
+        - Do not use XML tags in your response.
+        - Ensure citations are concise and directly related to the information provided.
+
+        ### Example of Citation:
+        If the user asks about a specific topic and the information is found in a source with a provided id attribute, the response should include the citation like in the following example:
+        * "According to the study, the proposed method increases efficiency by 20% [1]."
+
+        ### Output:
+        Provide a clear and direct response to the user's query, including inline citations in the format [id] only when the <source> tag with id attribute is present in the context. Never introduce a store, price, or product not literally present in <context>. In tables, always include the real source domain per row.
+
+        <context>
+        {{CONTEXT}}
+        </context>
     volumes:
       - ./openwebui-data:/app/backend/data
       - ./certs/ca.crt:/certs/ca.crt:ro
@@ -196,6 +310,18 @@ services:
       # directory mounted (not single files) since it's now index/api/
       # environment/docs.css, not just one page.
       - ./portal/docs:/app/public/docs:ro
+      # Drone Workshop viewer: a small client-side markdown renderer
+      # (portal/drone-workshop/index.html, reuses docs.css) fetching its
+      # content from a second, nested mount of the actual drone_workshop
+      # project below -- keeps that project as the single source of truth,
+      # no copying/build step needed when its docs change.
+      - ./portal/drone-workshop:/app/public/drone-workshop:ro
+      - ../drone_workshop:/app/public/drone-workshop/content:ro
+      # Drone Guide (a separate, full Docusaurus site) is NOT served from
+      # here -- Docusaurus's extensionless links need try_files-style
+      # extension resolution that Dashy's static serving doesn't have, so
+      # it's served directly by Caddy instead. See the caddy service below
+      # and certs/Caddyfile's /drone-guide/* block.
       # Downloadable root CA (public cert only, never the key) so people
       # can get it without filesystem access -- see portal/docs/api.html's TLS note.
       - ./certs/ca.crt:/app/public/ca.crt:ro
@@ -232,6 +358,13 @@ services:
       - ./certs/Caddyfile:/etc/caddy/Caddyfile
       - ./certs/server.crt:/certs/server.crt:ro
       - ./certs/server.key:/certs/server.key:ro
+      # Drone Guide static build, served directly (see Caddyfile's
+      # /drone-guide/* block). Mounts the repo root, not build/ itself:
+      # Docusaurus fully replaces build/ on each rebuild, and a bind mount of
+      # the directory would keep pointing at the deleted inode (site 404s
+      # until the container restarts). Mounting the parent survives rebuilds
+      # with zero downtime -- the site root is /srv/drone-guide/build.
+      - ../drone_workshop:/srv/drone-guide:ro
     # The sole entry point for all services. Path-routed under :443
     # (dashy/searxng/llm-server/grafana) except OpenWebUI, which can't be
     # path-routed -- see certs/Caddyfile.

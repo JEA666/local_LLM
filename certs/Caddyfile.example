@@ -47,9 +47,46 @@ DOMAIN_PLACEHOLDER:443 {
 		reverse_proxy admin:8080
 	}
 
-	# Catch-all: Dashy, the portal. Also serves portal/docs/*.html and
-	# certs/ca.crt as static files from its own public dir (bind-mounted in
-	# compose.yml) -- unaffected by the routes above.
+	# Drone Guide: a Docusaurus static site (drone_workshop/build/), served
+	# directly by Caddy rather than proxied through Dashy. Docusaurus emits
+	# extensionless links (e.g. /docs/intro for the file docs/intro.html) --
+	# Dashy's own static serving has no extension/clean-URL resolution, so
+	# in-app client-side navigation would work but a hard refresh or a
+	# shared deep link would 404. try_files appends .html here so both work.
+	handle_path /drone-guide/* {
+		# /srv/drone-guide is the mounted repo root, not the built site --
+		# compose.yml mounts the parent dir on purpose (Docusaurus replaces
+		# build/ wholesale on each rebuild), so the actual site root is one
+		# level down.
+		root * /srv/drone-guide/build
+
+		# Known Docusaurus SPA bug (github.com/facebook/docusaurus/issues/10053,
+		# #9552, #9916): loading a page via a literal *.html URL (typically
+		# .../index.html) instead of the clean directory URL makes React's
+		# client-side router fail to recognize the current route, so hydration
+		# mounts a second full copy of the page below the original -- visible
+		# as the whole page (navbar, hero, footer) repeating, and the topmost,
+		# broken copy's buttons (e.g. the dark-mode toggle) staying inert.
+		# Redirect any *.html request to its clean URL before it can hit
+		# that path, rather than serving the file directly via try_files.
+		# Two matchers, most-specific first: .../index.html -> its directory
+		# URL (Docusaurus's own convention), any other .../foo.html -> foo
+		# with the extension stripped. Caddy preserves the textual order of
+		# repeated same-name directives, so the index case is tried first.
+		@indexFile path_regexp indexFile ^(.*/)index\.html$
+		redir @indexFile /drone-guide{http.regexp.indexFile.1} permanent
+
+		@htmlFile path_regexp htmlFile ^(.*)\.html$
+		redir @htmlFile /drone-guide{http.regexp.htmlFile.1} permanent
+
+		try_files {path} {path}.html
+		file_server
+	}
+
+	# Catch-all: Dashy, the portal. Also serves portal/docs/*.html,
+	# portal/drone-workshop/*, and certs/ca.crt as static files from its own
+	# public dir (bind-mounted in compose.yml) -- unaffected by the routes
+	# above.
 	handle {
 		reverse_proxy dashy:8080
 	}

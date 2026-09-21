@@ -1,0 +1,17 @@
+[Unit]
+Description=Adaptive Power Management for LLM Inference
+After=nvidia-persistenced.service
+Requires=nvidia-persistenced.service
+
+[Service]
+Type=simple
+# __ADAPTIVE_POWER_SH_PATH__ is substituted by scripts/tune-system.sh with
+# this clone's real scripts/adaptive-power.sh path before install -- a
+# systemd unit's ExecStart can't be a relative/checkout-dependent path.
+# Installing by hand instead of via tune-system.sh? Replace it yourself.
+ExecStart=__ADAPTIVE_POWER_SH_PATH__
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

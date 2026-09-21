@@ -9,6 +9,17 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus-data:/prometheus
+    # Overrides the image's default CMD (Docker replaces, not merges) --
+    # the first 4 flags are its stock defaults, `retention.time` is the only
+    # addition. Default retention is 15d; 7d is plenty for a single-host
+    # LAN dashboard nobody's doing month-over-month analysis on, and keeps
+    # both disk (prometheus-data/) and the in-memory head block smaller.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --storage.tsdb.retention.time=7d
     # node-exporter runs with network_mode: host (see below) and isn't
     # reachable by container name -- reached via host-gateway instead, the
     # same mechanism used before other services moved onto a shared network.
@@ -90,6 +101,13 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    # Explicit GPU device nodes so the container keeps GPU access when runc
+    # rewrites its device cgroup (otherwise "Failed to initialize NVML: Unknown
+    # Error" and empty GPU panels). Same reason as llm-server in compose.yml,
+    # see the note there. NVML only needs these two. Multi-GPU: add /dev/nvidia1.
+    devices:
+      - /dev/nvidiactl
+      - /dev/nvidia0
     # No host port -- internal only, same as the other exporters.
 
   grafana:

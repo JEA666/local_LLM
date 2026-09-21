@@ -17,7 +17,9 @@ Generic and portable — no assumed hardware, model, or domain. See [`prompt.md`
 | Directory | Contents |
 |---|---|
 | `deployments/` | `compose.yml` — the whole stack, parameterized via `.env`. `compose.monitoring.yml` and `compose.admin.yml` are optional add-ons |
-| `scripts/` | Entrypoints and utilities (`stack-up.sh`, `generate-local-ca.sh`, `benchmark.sh`, `detect-hardware.sh`, ...) |
+| `scripts/` | Entrypoints and utilities (`stack-up.sh`, `generate-local-ca.sh`, `benchmark.sh`, `detect-hardware.sh`, `tune-system.sh`, `adaptive-power.sh`, ...) |
+| `configs/` | Config for the scripts above that need more than an env var — currently just `adaptive-power.conf` |
+| `init/` | systemd unit(s) installed by `scripts/tune-system.sh` — currently just `adaptive-power.service` |
 | `admin/` | Optional admin panel — Go source + Dockerfile, see "Admin panel" below |
 | `docs/` | API reference |
 | `portal/`, `searxng/`, `certs/`, `models/`, `openwebui-data/`, `benchmarks/` | Per-service config/data. `.example` templates are tracked; real generated files are git-ignored |
@@ -54,7 +56,14 @@ Set `MODEL_FILE` in `.env` to any `.gguf` file in `models/`. Three more variable
 ## Tuning
 
 - **`LLM_CPUSET`** pins inference to specific CPU cores via Docker's cgroup `cpuset`, more reliable than llama.cpp's own affinity flags. Only worth setting on a hybrid P-core/E-core CPU, and only after measuring — don't assume which cores help.
-- Event-driven power/clock management (boosting only during real generation, not on a utilization poll) is worth it if idle power/noise matters, but is inherently hardware-specific and not shipped here.
+- **`scripts/tune-system.sh`** (optional, `sudo`) — the second step after `detect-hardware.sh`: generic Linux + NVIDIA host tuning (CPU governor not fought by `power-profiles-daemon`/`tuned`, `vm.swappiness`/`vm.max_map_count`/`vm.overcommit_memory`, NVIDIA persistence mode, Transparent Huge Pages). Nothing in it is specific to any one GPU/CPU model.
+- **`scripts/adaptive-power.sh`** (optional, installed by `tune-system.sh` if `configs/adaptive-power.conf` exists) — an event-driven daemon that boosts CPU governor/EPP/GPU clock only while something is actually using the GPU (`llm-server`'s own log for fast reaction, a coarse utilization poll as a fallback so a different GPU job isn't left throttled), and drops back to idle otherwise. Worth it if idle power/fan noise matters to you; skip it if not. Config is hardware-specific — `cp configs/adaptive-power.conf.example configs/adaptive-power.conf` and replace the example's wattages/clocks with your own, derived like this:
+
+  ```bash
+  ./scripts/power-cap-sweep.sh gpu   # finds YOUR GPU's safe power floor
+  ```
+
+  Use that floor (with headroom, not right at it) as `POWER_LIMIT_IDLE`, and your GPU's stock power limit as `POWER_LIMIT_ACTIVE`. The example file explains each value and where it came from on the machine it was measured on.
 
 ## Family access
 
@@ -93,6 +102,8 @@ Open `https://<your-domain>/obs/` (default login `admin`/`admin` — change `GRA
 
 cAdvisor needs read-only `docker.sock` access to introspect containers, and a `fs.inotify.max_user_instances` of at least a few thousand — raise it with `echo 'fs.inotify.max_user_instances=4096' | sudo tee /etc/sysctl.d/99-inotify.conf && sudo sysctl --system` if it crash-loops on startup.
 
+**After any host NVIDIA driver update, restart the GPU exporter**: `docker restart gpu-exporter`. It holds an NVML handle opened against the driver that was loaded when it started — a host driver update/reload doesn't kill the container, but leaves that handle stale, so it starts failing every scrape with `Failed to initialize NVML: Unknown Error` while `nvidia-smi` on the host itself keeps working fine. Symptom: GPU utilization/saturation panels go flat/empty in Grafana with no container crash to point at it.
+
 ## Admin panel
 
 Optional — a small Go web app to switch the active model and trigger `detect-hardware.sh`/`benchmark.sh` from a browser instead of the CLI:
@@ -101,9 +112,11 @@ Optional — a small Go web app to switch the active model and trigger `detect-h
 docker compose -f deployments/compose.yml -f deployments/compose.admin.yml up -d
 ```
 
-Open `https://<your-domain>/admin/` — gated by Caddy `basic_auth`, not by the app itself. Before bringing it up, set in `.env`: `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` (hash with `docker run --rm caddy:2.9.1-alpine caddy hash-password --plaintext 'your-password'`, doubling every `$` in the result before pasting it in), and `HOST_REPO_DIR` — this repo's absolute path on the host, required because the app drives `docker compose` from inside its own container, and bind-mount paths must resolve against the real host filesystem, not the container's own view of it.
+Open `https://<your-domain>/admin/` — gated by Caddy `basic_auth`, not by the app itself. Before bringing it up, set in `.env`: `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` (hash with `docker run --rm caddy:2.9.1-alpine caddy hash-password --plaintext 'your-password'`, doubling every `$` in the result before pasting it in), `HOST_REPO_DIR` — this repo's absolute path on the host, required because the app drives `docker compose` from inside its own container, and bind-mount paths must resolve against the real host filesystem, not the container's own view of it — and `OPENWEBUI_ADMIN_EMAIL`/`OPENWEBUI_ADMIN_PASSWORD`, the same OpenWebUI admin account `scripts/bootstrap-openwebui.sh` uses. If your host user's UID isn't `1000` (`id -u` to check), also set `ADMIN_UID` before building — otherwise the container's writes through its `/repo` bind mount (e.g. `portal/docs/hardware.html`) fail with a permission error.
 
 **Docker access is scoped, not raw**: the `admin` container itself has **no access to `docker.sock`**. A dedicated `docker-socket-proxy` service holds the only (read-only) mount of the real socket and exposes a restricted, allowlisted subset of the Docker API over the network instead — containers/images/networks/volumes and start/stop/restart are allowed (what `docker compose up -d llm-server` needs); `exec` into any container, secrets, and everything Swarm-related are denied. See the diagram at `/docs/environment.html` for exactly what's allowed/denied.
+
+**Switching models updates two consumers, one automatically and one by hand.** OpenWebUI is synced by the admin panel itself — it calls OpenWebUI's API right after the restart to set `function_calling: legacy` on the new model's ID, the same fix `bootstrap-openwebui.sh` applies, without which OpenWebUI's web search silently breaks for that model. OpenCode's config lives in the operator's own home directory (`~/.config/opencode/opencode.json`), not reachable from inside the container, so after switching, run `./scripts/sync-opencode-config.sh` on the machine OpenCode runs on — it reads the new `MODEL_FILE` from `.env`, infers the instruct/coder profile from the filename, and updates just the `model` key and that one model entry in place. It's a no-op (exits cleanly) if OpenCode isn't installed there.
 
 ## OpenCode setup
 

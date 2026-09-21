@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# benchmark.sh — Standardized LLM benchmark for ultron
+# benchmark.sh — Standardized LLM benchmark for local_LLM
 #
 # Usage:
 #   ./benchmark.sh [iterations] [output_file] [context_depth]
@@ -77,13 +77,19 @@ EOF
 
 # --- Get system info ---
 get_system_info() {
-  local gpu_clock vram_clock vram_used vram_total temp power governor
-  gpu_clock=$(nvidia-smi --query-gpu=clocks.current.graphics --format=csv,noheader 2>/dev/null || echo "N/A")
-  vram_clock=$(nvidia-smi --query-gpu=clocks.current.memory --format=csv,noheader 2>/dev/null || echo "N/A")
-  vram_used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null || echo "N/A")
-  vram_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null || echo "N/A")
-  temp=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader 2>/dev/null || echo "N/A")
-  power=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader 2>/dev/null || echo "N/A")
+  local gpu_clock vram_clock vram_used vram_total temp power governor gpu_line
+  # One combined query instead of 6 separate nvidia-smi invocations -- each
+  # call pays its own NVML-init startup cost (~100-300ms), so this is
+  # meaningfully cheaper for no loss of information. nounits applies to all
+  # fields uniformly (matches vram_used/vram_total, which already omitted
+  # units in favor of the "_mib"/"_mhz"/"_c"/"_w" suffix in the JSON key
+  # name below -- gpu_clock/vram_clock/power previously embedded "MHz"/"W"
+  # in the value string too, which was the odd one out).
+  if gpu_line=$(nvidia-smi --query-gpu=clocks.current.graphics,clocks.current.memory,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits 2>/dev/null); then
+    IFS=', ' read -r gpu_clock vram_clock vram_used vram_total temp power <<< "$gpu_line"
+  else
+    gpu_clock="N/A"; vram_clock="N/A"; vram_used="N/A"; vram_total="N/A"; temp="N/A"; power="N/A"
+  fi
   governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
 
   cat <<EOF
@@ -131,11 +137,15 @@ print(json.dumps(messages))
 # PP: fresh prompt each time (~512 tokens, unique per iteration to prevent cache hits)
 run_pp_benchmark() {
   local iter=$1
-  local timestamp unique_prompt response
+  local timestamp unique_prompt_json response
   timestamp=$(date +%s%N)
 
-  # Build ~512 token prompt — entire prompt unique per iteration
-  unique_prompt=$(python3 -c "
+  # Build ~512 token prompt — entire prompt unique per iteration. Emits the
+  # already-JSON-escaped string directly (json.dumps) instead of raw text,
+  # so a second python3 process isn't needed just to re-escape it for the
+  # curl payload below.
+  unique_prompt_json=$(python3 -c "
+import json
 base = '''$PP_PROMPT'''
 nonce = 'run ${iter} nonce ${timestamp}'
 # Use nonce to make EVERY token unique — prefix, body, and suffix
@@ -145,14 +155,14 @@ body = f'{base} {nonce}. '
 target = 500 * 4
 padded = (body * (target // len(body) + 1))[:target]
 # Final unique suffix
-print(padded + f' [END-{nonce}]')
+print(json.dumps((padded + f' [END-{nonce}]').strip()))
 ")
 
   response=$(curl -s "$SERVER_URL/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d "{
       \"model\": \"$MODEL_NAME\",
-      \"messages\": [{\"role\": \"user\", \"content\": $(echo "$unique_prompt" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().strip()))')}],
+      \"messages\": [{\"role\": \"user\", \"content\": $unique_prompt_json}],
       \"max_tokens\": 1,
       \"temperature\": $TEMPERATURE
     }")
@@ -218,7 +228,7 @@ print(f'{tg_tps:.2f}|{completion_tokens}|{prompt_tokens}|{cache_tokens}')
 }
 
 main() {
-  echo "=== LLM Benchmark v${SCRIPT_VERSION} — ultron ==="
+  echo "=== LLM Benchmark v${SCRIPT_VERSION} — $(hostname) ==="
   echo "Model: $MODEL_NAME"
   echo "Iterations: $ITERATIONS (1 warmup + $ITERATIONS measured)"
   echo "Context depth: $CONTEXT_DEPTH"
@@ -319,7 +329,7 @@ main() {
 import json
 
 results = {
-    'test': 'ultron-benchmark-v3',
+    'test': 'local-llm-benchmark-v3',
     'script_version': '$SCRIPT_VERSION',
     'timestamp': '$timestamp',
     'hostname': '$hostname',

@@ -4,6 +4,9 @@ openwebui-data/
 prometheus-data/
 grafana-data/
 benchmarks/*.json
+# scripts/power-cap-sweep.sh writes a new timestamped folder per run. It holds
+# this machine's own measurements (hostname, image digests, local model paths).
+benchmarks/power-cap-sweep-*/
 .env
 
 # Real generated CA/cert/Caddyfile/portal/searxng config -- see
@@ -21,6 +24,18 @@ portal/docs/api.html
 portal/docs/environment.html
 portal/docs/hardware.html
 searxng/settings.yml
+
+# Not for public -- personal content, not part of the LLM stack.
+portal/drone-workshop/
+
+# Personal working notes (hardcoded local paths, private companion-repo
+# references) -- not portable, not meant for other clones of this repo.
+AGENTS.md
+
+# Real adaptive-power config (has your own measured wattages/clocks) and its
+# log -- see configs/adaptive-power.conf.example.
+configs/adaptive-power.conf
+scripts/adaptive-power.log*
 
 # Claude Code's own working files -- never committed, not project content.
 .claude/

@@ -30,6 +30,9 @@
     <tr><td>VRAM (total / free)</td><td>GPU_VRAM_TOTAL_PLACEHOLDER / GPU_VRAM_FREE_PLACEHOLDER</td></tr>
     <tr><td>GPU driver</td><td>GPU_DRIVER_PLACEHOLDER</td></tr>
     <tr><td>nvidia-container-toolkit</td><td>NVIDIA_TOOLKIT_STATUS_PLACEHOLDER</td></tr>
+    <tr><td>Motherboard</td><td>MOBO_PLACEHOLDER</td></tr>
+    <tr><td>PSU</td><td>PSU_PLACEHOLDER</td></tr>
+    <tr><td>Case</td><td>CASE_PLACEHOLDER</td></tr>
     <tr><td>CPU</td><td>CPU_MODEL_PLACEHOLDER</td></tr>
     <tr><td>CPU cores (logical)</td><td>CPU_CORES_PLACEHOLDER</td></tr>
     <tr><td>CPU topology</td><td>CPU_TOPOLOGY_PLACEHOLDER</td></tr>

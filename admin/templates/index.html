@@ -12,43 +12,21 @@
      This <base> pins relative resolution to /admin/ regardless of which
      sub-path the last POST response happened to land on. -->
 <base href="/admin/">
+<!-- Design tokens (colors, shadow, fonts) come from the shared stylesheet
+     the docs site already uses -- Caddy routes /docs/* independently of
+     /admin/*, so this resolves client-side with no server coupling. Only
+     this page's own component styles (.panel, .message, etc., which don't
+     exist in docs.css) are declared below. -->
+<link rel="stylesheet" href="/docs/docs.css">
 <style>
-  :root {
-    --bg: #f3f1ec;
-    --surface: #ffffff;
-    --surface-2: #ece8de;
-    --line: #cdc6b4;
-    --text: #211f1a;
-    --text-muted: #6b6555;
-    --accent: #b5652a;
-    --accent-soft: #e4c19f;
-    --zone-danger: #a8342a;
-    --zone-danger-soft: #f2d8d4;
-    --shadow: 0 1px 2px rgba(30, 25, 15, 0.06), 0 8px 24px -12px rgba(30, 25, 15, 0.18);
-    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14161b; --surface: #1c1f26; --surface-2: #242832; --line: #383c46;
-      --text: #ece8e0; --text-muted: #9c978a; --accent: #e0975a; --accent-soft: #4a3624;
-      --zone-danger: #e46a5c; --zone-danger-soft: #3d211c;
-      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -12px rgba(0, 0, 0, 0.5);
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #14161b; --surface: #1c1f26; --surface-2: #242832; --line: #383c46;
-    --text: #ece8e0; --text-muted: #9c978a; --accent: #e0975a; --accent-soft: #4a3624;
-    --zone-danger: #e46a5c; --zone-danger-soft: #3d211c;
-  }
-  :root[data-theme="light"] {
-    --bg: #f3f1ec; --surface: #ffffff; --surface-2: #ece8de; --line: #cdc6b4;
-    --text: #211f1a; --text-muted: #6b6555; --accent: #b5652a; --accent-soft: #e4c19f;
-    --zone-danger: #a8342a; --zone-danger-soft: #f2d8d4;
-  }
-
   * { box-sizing: border-box; }
   body {
+    /* docs.css sets display:flex on body for its own two-column sidebar
+       layout -- this page has no sidebar, override explicitly rather than
+       relying on cascade order, since CSS applies per-property, not
+       per-rule-block, and docs.css's display value would otherwise leak
+       through untouched. */
+    display: block;
     margin: 0;
     background: var(--bg);
     color: var(--text);
@@ -147,6 +125,7 @@
 
   <div class="panel">
     <h2>Switch model</h2>
+    <p class="desc">Restarts llm-server and sets function_calling=legacy on the new model in OpenWebUI. If you use OpenCode, run ./scripts/sync-opencode-config.sh on this machine afterward — its config isn't reachable from here.</p>
     <div class="current">Current: <code>{{.CurrentFile}}</code></div>
     <form method="post" action="switch-model">
       <label for="model">Model file (from models/)</label>

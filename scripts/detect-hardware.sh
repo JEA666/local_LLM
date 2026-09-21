@@ -12,6 +12,20 @@ set -euo pipefail
 # Usage: ./detect-hardware.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$SCRIPT_DIR/.."
+
+# PSU and case can't be detected in software (no standard way for a consumer
+# PSU to report its own wattage/model, and a case is never exposed to the OS
+# at all) -- set once in .env instead, same pattern as DOMAIN/LLM_CPUSET.
+ENV_FILE="$DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  set +a
+fi
+PSU_MODEL="${PSU_MODEL:-Not set -- see .env.example}"
+CASE_MODEL="${CASE_MODEL:-Not set -- see .env.example}"
 
 GPU_NAME="Not detected"
 GPU_VRAM_TOTAL="n/a"
@@ -47,6 +61,19 @@ else
 fi
 
 echo
+echo "=== Motherboard ==="
+MOBO="Not detected"
+if [[ -r /sys/class/dmi/id/board_vendor && -r /sys/class/dmi/id/board_name ]]; then
+  MOBO="$(cat /sys/class/dmi/id/board_vendor) $(cat /sys/class/dmi/id/board_name)"
+fi
+echo "Board: $MOBO"
+
+echo
+echo "=== PSU / Case (from .env, not auto-detected) ==="
+echo "PSU:  $PSU_MODEL"
+echo "Case: $CASE_MODEL"
+
+echo
 echo "=== CPU ==="
 CPU_CORES="$(nproc --all)"
 CPU_MODEL="$(lscpu | grep "^Model name:" | sed 's/^Model name:[[:space:]]*//')"
@@ -72,21 +99,49 @@ free -h | awk 'NR==1 || NR==2'
 echo
 echo "=== Next step ==="
 echo "Feed the numbers above into prompt.md's Step 2 (dense vs. MoE decision)."
+echo "Optional: sudo scripts/tune-system.sh applies OS-level tuning (governor,"
+echo "sysctl, NVIDIA persistence mode) and can install the adaptive-power daemon"
+echo "(quiet at idle, full power while llm-server -- or anything else -- is"
+echo "using the GPU). See README.md 'Tuning'."
 
 DOCS_DIR="$SCRIPT_DIR/../portal/docs"
 if [[ -f "$DOCS_DIR/hardware.html.example" ]]; then
-  sed \
-    -e "s/GPU_NAME_PLACEHOLDER/$GPU_NAME/g" \
-    -e "s/GPU_VRAM_TOTAL_PLACEHOLDER/$GPU_VRAM_TOTAL/g" \
-    -e "s/GPU_VRAM_FREE_PLACEHOLDER/$GPU_VRAM_FREE/g" \
-    -e "s/GPU_DRIVER_PLACEHOLDER/$GPU_DRIVER/g" \
-    -e "s/NVIDIA_TOOLKIT_STATUS_PLACEHOLDER/$TOOLKIT_STATUS/g" \
-    -e "s/CPU_MODEL_PLACEHOLDER/$CPU_MODEL/g" \
-    -e "s/CPU_CORES_PLACEHOLDER/$CPU_CORES/g" \
-    -e "s/CPU_TOPOLOGY_PLACEHOLDER/$CPU_TOPOLOGY/g" \
-    -e "s/RAM_TOTAL_PLACEHOLDER/$RAM_TOTAL/g" \
-    -e "s/SCAN_DATE_PLACEHOLDER/$(date -Iseconds)/g" \
-    "$DOCS_DIR/hardware.html.example" > "$DOCS_DIR/hardware.html"
+  # Plain string replacement (not sed) -- several of these values are
+  # real-world free text (board names, PSU/case models from .env) that can
+  # legitimately contain '/', '&', or '\', any of which breaks a sed
+  # s/PLACEHOLDER/$VALUE/ substitution and, under this script's
+  # `set -euo pipefail`, aborts the entire hardware scan over one field.
+  # str.replace() has no delimiter or metacharacter to collide with.
+  GPU_NAME="$GPU_NAME" GPU_VRAM_TOTAL="$GPU_VRAM_TOTAL" GPU_VRAM_FREE="$GPU_VRAM_FREE" \
+  GPU_DRIVER="$GPU_DRIVER" TOOLKIT_STATUS="$TOOLKIT_STATUS" MOBO="$MOBO" \
+  PSU_MODEL="$PSU_MODEL" CASE_MODEL="$CASE_MODEL" CPU_MODEL="$CPU_MODEL" \
+  CPU_CORES="$CPU_CORES" CPU_TOPOLOGY="$CPU_TOPOLOGY" RAM_TOTAL="$RAM_TOTAL" \
+  SCAN_DATE="$(date -Iseconds)" python3 -c "
+import os
+
+replacements = {
+    'GPU_NAME_PLACEHOLDER': os.environ['GPU_NAME'],
+    'GPU_VRAM_TOTAL_PLACEHOLDER': os.environ['GPU_VRAM_TOTAL'],
+    'GPU_VRAM_FREE_PLACEHOLDER': os.environ['GPU_VRAM_FREE'],
+    'GPU_DRIVER_PLACEHOLDER': os.environ['GPU_DRIVER'],
+    'NVIDIA_TOOLKIT_STATUS_PLACEHOLDER': os.environ['TOOLKIT_STATUS'],
+    'MOBO_PLACEHOLDER': os.environ['MOBO'],
+    'PSU_PLACEHOLDER': os.environ['PSU_MODEL'],
+    'CASE_PLACEHOLDER': os.environ['CASE_MODEL'],
+    'CPU_MODEL_PLACEHOLDER': os.environ['CPU_MODEL'],
+    'CPU_CORES_PLACEHOLDER': os.environ['CPU_CORES'],
+    'CPU_TOPOLOGY_PLACEHOLDER': os.environ['CPU_TOPOLOGY'],
+    'RAM_TOTAL_PLACEHOLDER': os.environ['RAM_TOTAL'],
+    'SCAN_DATE_PLACEHOLDER': os.environ['SCAN_DATE'],
+}
+
+with open('$DOCS_DIR/hardware.html.example') as f:
+    content = f.read()
+for placeholder, value in replacements.items():
+    content = content.replace(placeholder, value)
+with open('$DOCS_DIR/hardware.html', 'w') as f:
+    f.write(content)
+"
   echo
   echo "portal/docs/hardware.html updated."
 fi
